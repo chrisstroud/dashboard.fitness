@@ -500,6 +500,15 @@ async function init() {
   }
 }
 
+// Refresh if the date changes (left open overnight, or tab refocus next day)
+let loadedDate = today();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && today() !== loadedDate) {
+    loadedDate = today();
+    init();
+  }
+});
+
 init();
 </script>
 </body>
