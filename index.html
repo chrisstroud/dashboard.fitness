@@ -270,6 +270,19 @@
 // --- Config ---
 const REPO = 'chrisstroud/dashboard.fitness';
 const TOKEN_KEY = 'df_gh_token';
+const APP_VERSION = '2';
+
+// --- Auto-update: check if a newer version is deployed ---
+(async function checkForUpdate() {
+  try {
+    const res = await fetch('version.txt?_=' + Date.now());
+    if (!res.ok) return;
+    const remote = (await res.text()).trim();
+    if (remote !== APP_VERSION) {
+      window.location.reload();
+    }
+  } catch (e) { /* offline or first deploy, skip */ }
+})();
 
 // --- State ---
 let fileSha = null;
