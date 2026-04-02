@@ -252,13 +252,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     Today
   </a>
-  <a href="#training" onclick="go('training')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h0M17.5 6.5h0M2 12h2m16 0h2M6 12H4.5a2.5 2.5 0 010-5H6m0 5h12m0 0h1.5a2.5 2.5 0 000-5H18m-12 5V7m12 5V7M12 7v5"/></svg>
-    Training
+  <a href="#week" onclick="go('week')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Week
   </a>
-  <a href="#routines" onclick="go('routines')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    Routines
+  <a href="#docs" onclick="go('docs')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    Docs
   </a>
   <a href="#history" onclick="go('history')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -270,7 +270,7 @@
 // --- Config ---
 const REPO = 'chrisstroud/dashboard.fitness';
 const TOKEN_KEY = 'df_gh_token';
-const APP_VERSION = '2';
+const APP_VERSION = '3';
 
 // --- Auto-update: check if a newer version is deployed ---
 (async function checkForUpdate() {
@@ -392,8 +392,8 @@ function go(route, pushStack) {
   if (!token) { showSetup(); return; }
 
   if (route === 'today') loadToday();
-  else if (route === 'training') loadDir('Volume Daddy', 'Training');
-  else if (route === 'routines') loadRoutines();
+  else if (route === 'week') loadWeek();
+  else if (route === 'docs') loadDocs();
   else if (route === 'history') loadDir('days', 'History');
   else if (route.startsWith('file/')) loadFile(route.slice(5));
 }
@@ -564,10 +564,87 @@ function toggleItem(el) {
 }
 
 // --- File list view ---
+// --- Week view ---
+async function loadWeek() {
+  setHeader('This Week', false);
+  setActiveTab('week');
+  $('content').innerHTML = '<div class="loading">Loading...</div>';
+
+  const d = new Date();
+  const dayOfWeek = (d.getDay() + 6) % 7; // Mon=0
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - dayOfWeek);
+
+  const strengthNames = ['Bench Day', 'Squat Day', 'Press Day', 'Hinge Day'];
+  const cardioNames = ['Zone 2', 'HIIT'];
+  const strengthDone = new Set();
+  const cardioCounts = { 'Zone 2': 0, 'HIIT': 0 };
+
+  // Scan all days in the week
+  for (let i = 0; i <= 6; i++) {
+    const dd = new Date(monday);
+    dd.setDate(monday.getDate() + i);
+    const ds = `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`;
+    const file = await fetchFile(`days/${ds}.md`);
+    if (!file) continue;
+    for (const line of file.content.split('\n')) {
+      if (!line.startsWith('- [x]')) continue;
+      const text = line.slice(6);
+      for (const n of strengthNames) { if (text.startsWith(n)) strengthDone.add(n); }
+      for (const n of cardioNames) { if (text.startsWith(n)) cardioCounts[n]++; }
+    }
+  }
+
+  const isoWeek = getISOWeek(d);
+  let html = `<div class="today">`;
+  html += `<h1>Week ${isoWeek}</h1>`;
+
+  // Strength
+  html += '<div class="section"><div class="section-title">Strength — ' + strengthDone.size + '/4</div>';
+  for (const name of strengthNames) {
+    const done = strengthDone.has(name);
+    const cls = done ? ' checked' : '';
+    html += `<div class="item${cls}" style="cursor:default">`;
+    html += '<div class="checkbox"></div>';
+    html += `<div class="item-text"><span class="label">${esc(name)}</span></div>`;
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Cardio
+  const totalCardio = cardioCounts['Zone 2'] + cardioCounts['HIIT'];
+  html += '<div class="section"><div class="section-title">Cardio — ' + totalCardio + '/5</div>';
+
+  // Zone 2: show count out of 4
+  const z2Done = cardioCounts['Zone 2'];
+  html += `<div class="item${z2Done > 0 ? ' checked' : ''}" style="cursor:default">`;
+  html += '<div class="checkbox"></div>';
+  html += `<div class="item-text"><span class="label">Zone 2</span> <span class="detail">${z2Done}/4 sessions</span></div>`;
+  html += '</div>';
+
+  // HIIT: 1x per week
+  const hiitDone = cardioCounts['HIIT'] > 0;
+  html += `<div class="item${hiitDone ? ' checked' : ''}" style="cursor:default">`;
+  html += '<div class="checkbox"></div>';
+  html += `<div class="item-text"><span class="label">HIIT</span> <span class="detail">${hiitDone ? 'Done' : '0/1'}</span></div>`;
+  html += '</div>';
+
+  html += '</div></div>';
+  $('content').innerHTML = html;
+}
+
+function getISOWeek(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7) + 1;
+}
+
+// --- File list view ---
 async function loadDir(path, label) {
-  const tabName = label === 'Training' ? 'training' : label === 'History' ? 'history' : 'routines';
-  setHeader(label, tabName !== 'training' && tabName !== 'history' && tabName !== 'routines');
-  setActiveTab(tabName);
+  setHeader(label, label !== 'History');
+  setActiveTab(label === 'History' ? 'history' : 'docs');
   $('content').innerHTML = '<div class="loading">Loading...</div>';
 
   const items = await fetchDir(path);
@@ -575,7 +652,7 @@ async function loadDir(path, label) {
   for (const item of items) {
     const name = item.name.replace(/\.md$/, '');
     const icon = item.type === 'dir' ? '&#128193;' : '&#128196;';
-    const route = item.type === 'dir' ? `file/${item.path}` : `file/${item.path}`;
+    const route = `file/${item.path}`;
     html += `<li><a href="#${route}" onclick="event.preventDefault();go('${route}')">`;
     html += `<span class="icon">${icon}</span>`;
     html += `<span class="name">${esc(name)}</span>`;
@@ -586,32 +663,47 @@ async function loadDir(path, label) {
   $('content').innerHTML = html;
 }
 
-async function loadRoutines() {
-  setHeader('Routines', false);
-  setActiveTab('routines');
+async function loadDocs() {
+  setHeader('Docs', false);
+  setActiveTab('docs');
   $('content').innerHTML = '<div class="loading">Loading...</div>';
 
-  const files = [
-    { path: 'docs/Daily Routine.md', name: 'Daily Routine', icon: '&#9788;' },
-    { path: 'docs/Supplements.md', name: 'Supplements', icon: '&#128138;' },
-    { path: 'docs/Ethos.md', name: 'Ethos', icon: '&#9733;' },
-    { path: 'docs/Program Archive.md', name: 'Program Archive', icon: '&#128218;' },
-    { path: 'docs/Weekly Architecture.md', name: 'Weekly Architecture', icon: '&#128197;' },
-    { path: 'docs/research', name: 'Research', icon: '&#128300;' },
-    { path: 'docs/health', name: 'Health Records', icon: '&#128154;' },
+  const sections = [
+    { label: 'Training', items: [
+      { path: 'Volume Daddy/Training Program.md', name: 'Training Program' },
+      { path: 'Volume Daddy/Bench Day.md', name: 'Bench Day' },
+      { path: 'Volume Daddy/Squat Day.md', name: 'Squat Day' },
+      { path: 'Volume Daddy/Press Day.md', name: 'Press Day' },
+      { path: 'Volume Daddy/Hinge Day.md', name: 'Hinge Day' },
+      { path: 'Volume Daddy/Cardio.md', name: 'Cardio' },
+    ]},
+    { label: 'Routines & Health', items: [
+      { path: 'docs/Daily Routine.md', name: 'Daily Routine' },
+      { path: 'docs/Supplements.md', name: 'Supplements' },
+      { path: 'docs/Ethos.md', name: 'Ethos' },
+      { path: 'docs/Weekly Architecture.md', name: 'Weekly Architecture' },
+      { path: 'docs/Program Archive.md', name: 'Program Archive' },
+    ]},
+    { label: 'Research', items: [
+      { path: 'docs/research', name: 'Research', isDir: true },
+      { path: 'docs/health', name: 'Health Records', isDir: true },
+    ]},
   ];
 
-  let html = '<ul class="file-list">';
-  for (const f of files) {
-    const isDir = !f.path.endsWith('.md');
-    const route = isDir ? `file/${f.path}` : `file/${f.path}`;
-    html += `<li><a href="#${route}" onclick="event.preventDefault();go('${route}')">`;
-    html += `<span class="icon">${f.icon}</span>`;
-    html += `<span class="name">${esc(f.name)}</span>`;
-    html += '<span class="arrow">&#8250;</span>';
-    html += '</a></li>';
+  let html = '';
+  for (const sec of sections) {
+    html += `<div class="section"><div class="section-title">${esc(sec.label)}</div>`;
+    html += '<ul class="file-list">';
+    for (const f of sec.items) {
+      const route = `file/${f.path}`;
+      html += `<li><a href="#${route}" onclick="event.preventDefault();go('${route}')">`;
+      html += `<span class="icon">${f.isDir ? '&#128193;' : '&#128196;'}</span>`;
+      html += `<span class="name">${esc(f.name)}</span>`;
+      html += '<span class="arrow">&#8250;</span>';
+      html += '</a></li>';
+    }
+    html += '</ul></div>';
   }
-  html += '</ul>';
   $('content').innerHTML = html;
 }
 
