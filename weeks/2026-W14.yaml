@@ -5,6 +5,8 @@ strength:
   done:
   - day: '2026-04-02'
     workout: Bench Day
+  - day: '2026-04-03'
+    workout: Bench Day
 cardio:
   target: 5
   done:
