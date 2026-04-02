@@ -48,7 +48,7 @@
     color: var(--fg);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    padding-bottom: 72px; /* tab bar */
+    padding-bottom: 100px; /* tab bar + safe area */
   }
 
   /* --- Sync bar --- */
@@ -103,6 +103,11 @@
   .section-title {
     font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .section-title a {
+    font-size: 0.7rem; color: var(--accent); text-decoration: none;
+    font-weight: 500; text-transform: none; letter-spacing: 0;
   }
   .item {
     display: flex; align-items: flex-start; gap: 12px;
@@ -293,7 +298,7 @@
 // --- Config ---
 const REPO = 'chrisstroud/dashboard.fitness';
 const TOKEN_KEY = 'df_gh_token';
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 
 // --- Auto-update: check if a newer version is deployed ---
 (async function checkForUpdate() {
@@ -451,23 +456,31 @@ function renderToday(md) {
   let html = '<div class="today">';
   html += `<h1>${esc(title)}</h1>`;
 
+  // Section → source doc links
+  const sectionLinks = {
+    'Morning': { label: 'Routine', route: 'file/docs/Daily Routine.md' },
+    'Workout': { label: 'Program', route: 'file/Volume Daddy/Training Program.md' },
+    'Evening': { label: 'Routine', route: 'file/docs/Daily Routine.md' },
+  };
+
   for (const section of sections) {
     const isWorkout = section.title === 'Workout';
     html += '<div class="section">';
-    html += `<div class="section-title">${esc(section.title)}</div>`;
+    const link = sectionLinks[section.title];
+    if (link) {
+      html += `<div class="section-title">${esc(section.title)} <a href="#${link.route}" onclick="event.preventDefault();go('${link.route}')">${link.label} ›</a></div>`;
+    } else {
+      html += `<div class="section-title">${esc(section.title)}</div>`;
+    }
 
     if (isWorkout) {
-      // Render workouts as compact pills, non-workouts (Dog walk) as regular items
-      const workouts = section.items.filter(i => !i.text.startsWith('Dog walk'));
-      const other = section.items.filter(i => i.text.startsWith('Dog walk'));
 
       html += '<div class="pills">';
       for (let i = 0; i < section.items.length; i++) {
         const item = section.items[i];
-        if (item.text.startsWith('Dog walk')) continue;
         const locked = item.checked && item.priorDay;
         const cls = locked ? 'locked' : item.checked ? 'checked' : '';
-        const label = item.text.split(' (')[0]; // "Bench Day"
+        const label = item.text.split(' (')[0];
         const sub = item.priorDay ? item.priorDay : '';
         html += `<span class="pill ${cls}" data-section="Workout" data-index="${i}">`;
         html += esc(label);
@@ -475,17 +488,6 @@ function renderToday(md) {
         html += '</span>';
       }
       html += '</div>';
-
-      // Render non-workout items (Dog walk) as regular items
-      for (let i = 0; i < section.items.length; i++) {
-        const item = section.items[i];
-        if (!item.text.startsWith('Dog walk')) continue;
-        const cls = item.checked ? ' checked' : '';
-        html += `<div class="item${cls}" data-section="Workout" data-index="${i}">`;
-        html += '<div class="checkbox"></div><div class="item-text">';
-        html += `<span class="label">${esc(item.text)}</span>`;
-        html += '</div></div>';
-      }
     } else {
       // Regular section rendering
       for (let i = 0; i < section.items.length; i++) {

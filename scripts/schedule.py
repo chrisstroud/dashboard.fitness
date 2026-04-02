@@ -452,10 +452,6 @@ def generate_day(items: list[ActionItem], d: date, spine: dict) -> str:
     else:
         lines.append("- [ ] HIIT (45min)")
 
-    # Anytime items (dog walk etc.)
-    for item in anytime_items:
-        dur = f" ({item.duration})" if item.duration else ""
-        lines.append(f"- [ ] {item.name}{dur}")
     lines.append("")
 
     # --- Evening ---
@@ -467,6 +463,15 @@ def generate_day(items: list[ActionItem], d: date, spine: dict) -> str:
     pm_supps = checklists.get("evening supplements")
     if pm_supps:
         lines.append(f"- [ ] Supplements: {compact_checklist(pm_supps)}")
+
+    # --- Other ---
+    if anytime_items:
+        lines.append("")
+        lines.append("## Other")
+        lines.append("")
+        for item in anytime_items:
+            dur = f" ({item.duration})" if item.duration else ""
+            lines.append(f"- [ ] {item.name}{dur}")
     lines.append("")
 
     return "\n".join(lines)
