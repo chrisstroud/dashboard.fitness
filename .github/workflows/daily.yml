@@ -8,7 +8,12 @@ on:
       - 'docs/**'
       - 'Volume Daddy/**'
       - 'scripts/schedule.py'
+      - 'days/**'
   workflow_dispatch:  # manual trigger
+
+concurrency:
+  group: schedule
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -16,8 +21,13 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    # Skip if this push was made by the action itself
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'generate') && !startsWith(github.event.head_commit.message, 'check:')
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -29,5 +39,5 @@ jobs:
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'generate daily schedule'
-          file_pattern: 'days/*.md data/schedule.yaml'
+          commit_message: 'generate: daily schedule + weekly spine'
+          file_pattern: 'days/*.md weeks/*.yaml data/schedule.yaml'

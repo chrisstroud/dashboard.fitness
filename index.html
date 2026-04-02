@@ -116,6 +116,7 @@
   .item.checked .item-text { text-decoration: line-through; }
   .item.checked .checkbox { background: var(--check-bg); border-color: #22c55e; }
   .item.checked .checkbox::after { content: '\2713'; color: #22c55e; font-size: 14px; }
+  .item.locked { opacity: 0.35; cursor: default; }
   .checkbox {
     width: 22px; height: 22px; min-width: 22px;
     border: 2px solid var(--border); border-radius: 6px;
@@ -178,23 +179,39 @@
   .md-view em { font-style: italic; color: var(--muted); }
   .md-view img { max-width: 100%; border-radius: var(--radius); }
 
+  /* --- Weekly progress --- */
+  .week-progress {
+    display: flex; gap: 16px; justify-content: center;
+    padding: 10px 12px; margin-top: 8px;
+    background: var(--section-bg); border-radius: var(--radius);
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .week-progress .stat { display: flex; align-items: center; gap: 6px; }
+  .week-progress .dots { display: flex; gap: 3px; }
+  .week-progress .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--border);
+  }
+  .week-progress .dot.filled { background: #22c55e; }
+
   /* --- Tab bar --- */
   .tabs {
     position: fixed; bottom: 0; left: 0; right: 0;
     display: flex; background: var(--tab-bg);
     border-top: 1px solid var(--tab-border);
-    padding: 4px 0 env(safe-area-inset-bottom, 8px);
+    padding: 6px 0 env(safe-area-inset-bottom, 8px);
     z-index: 50;
   }
   .tabs a {
     flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 2px; padding: 6px 0; text-decoration: none;
-    color: var(--muted); font-size: 0.65rem; font-weight: 500;
+    gap: 3px; padding: 4px 0; text-decoration: none;
+    color: var(--muted); font-size: 0.6rem; font-weight: 500;
+    letter-spacing: 0.02em;
     -webkit-tap-highlight-color: transparent;
     transition: color 0.15s;
   }
   .tabs a.active { color: var(--accent); }
-  .tabs a .tab-icon { font-size: 1.3rem; line-height: 1; }
+  .tabs a svg { width: 22px; height: 22px; }
 
   /* --- Setup / empty states --- */
   .setup { padding: 40px 16px; text-align: center; }
@@ -229,16 +246,20 @@
 
 <nav class="tabs">
   <a href="#today" onclick="go('today')">
-    <span class="tab-icon">&#9745;</span>Today
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    Today
   </a>
   <a href="#training" onclick="go('training')">
-    <span class="tab-icon">&#9883;</span>Training
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h0M17.5 6.5h0M2 12h2m16 0h2M6 12H4.5a2.5 2.5 0 010-5H6m0 5h12m0 0h1.5a2.5 2.5 0 000-5H18m-12 5V7m12 5V7M12 7v5"/></svg>
+    Training
   </a>
   <a href="#routines" onclick="go('routines')">
-    <span class="tab-icon">&#9201;</span>Routines
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    Routines
   </a>
   <a href="#history" onclick="go('history')">
-    <span class="tab-icon">&#9776;</span>History
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    History
   </a>
 </nav>
 
@@ -382,14 +403,15 @@ async function loadToday() {
   fileSha = file.sha;
   rawMarkdown = file.content;
   renderToday(rawMarkdown);
+
+  // Fetch weekly progress in background
+  fetchWeekProgress();
 }
 
 function renderToday(md) {
-  const { title, meta, weekTargets, sections } = parseTodayMd(md);
+  const { title, sections } = parseTodayMd(md);
   let html = '<div class="today">';
   html += `<h1>${esc(title)}</h1>`;
-  if (meta) html += `<div class="meta">${esc(meta)}</div>`;
-  if (weekTargets) html += `<div class="week-targets">${esc(weekTargets)}</div>`;
 
   for (const section of sections) {
     html += '<div class="section">';
@@ -397,8 +419,11 @@ function renderToday(md) {
     for (let i = 0; i < section.items.length; i++) {
       const item = section.items[i];
       const cls = item.checked ? ' checked' : '';
+      // Pre-checked from earlier in the week = locked (not tappable today)
+      const locked = item.checked && item.priorDay;
+      const lockCls = locked ? ' locked' : '';
       const parts = splitItem(item.text);
-      html += `<div class="item${cls}" data-section="${esc(section.title)}" data-index="${i}">`;
+      html += `<div class="item${cls}${lockCls}" data-section="${esc(section.title)}" data-index="${i}">`;
       html += '<div class="checkbox"></div><div class="item-text">';
       html += `<span class="label">${esc(parts.label)}</span>`;
       if (parts.detail) html += ` <span class="detail">${esc(parts.detail)}</span>`;
@@ -406,42 +431,97 @@ function renderToday(md) {
     }
     html += '</div>';
   }
+
+  // Weekly progress placeholder
+  html += '<div id="week-progress"></div>';
   html += '</div>';
   $('content').innerHTML = html;
 
-  $('content').querySelectorAll('.item').forEach(el => {
+  // Attach click handlers (skip locked items)
+  $('content').querySelectorAll('.item:not(.locked)').forEach(el => {
     el.addEventListener('click', () => toggleItem(el));
   });
+}
+
+async function fetchWeekProgress() {
+  // Get ISO week boundaries
+  const d = new Date();
+  const dayOfWeek = (d.getDay() + 6) % 7; // Mon=0
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - dayOfWeek);
+
+  let strengthDone = 0, strengthTarget = 4;
+  let cardioDone = 0, cardioTarget = 5;
+  const strengthNames = ['Bench Day', 'Squat Day', 'Press Day', 'Hinge Day'];
+  const cardioNames = ['Zone 2', 'HIIT'];
+
+  // Fetch each day of the week so far
+  for (let i = 0; i <= dayOfWeek; i++) {
+    const dd = new Date(monday);
+    dd.setDate(monday.getDate() + i);
+    const ds = `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`;
+    const file = await fetchFile(`days/${ds}.md`);
+    if (!file) continue;
+    for (const line of file.content.split('\n')) {
+      if (!line.startsWith('- [x]')) continue;
+      const text = line.slice(6);
+      if (strengthNames.some(n => text.startsWith(n))) strengthDone++;
+      if (cardioNames.some(n => text.startsWith(n))) cardioDone++;
+    }
+  }
+
+  const el = document.getElementById('week-progress');
+  if (!el) return;
+
+  function dots(done, target) {
+    let html = '<span class="dots">';
+    for (let i = 0; i < target; i++) {
+      html += `<span class="dot${i < done ? ' filled' : ''}"></span>`;
+    }
+    html += '</span>';
+    return html;
+  }
+
+  el.innerHTML = `<div class="week-progress">
+    <span class="stat">Strength ${dots(strengthDone, strengthTarget)} ${strengthDone}/${strengthTarget}</span>
+    <span class="stat">Cardio ${dots(cardioDone, cardioTarget)} ${cardioDone}/${cardioTarget}</span>
+  </div>`;
 }
 
 function parseTodayMd(md) {
   const lines = md.split('\n');
   const sections = [];
-  let current = null, title = '', meta = '', weekTargets = '';
+  let current = null, title = '';
 
   for (const line of lines) {
     if (line.startsWith('# ')) { title = line.slice(2); continue; }
-    if (line.startsWith('> ')) { meta = line.slice(2); continue; }
-    if (line.startsWith('**This week:**')) { weekTargets = line.replace(/\*\*/g, ''); continue; }
     if (line.startsWith('## ')) { current = { title: line.slice(3), items: [] }; sections.push(current); continue; }
     if (line.startsWith('- [') && current) {
       const checked = line.charAt(3) === 'x';
       let text = line.slice(6).replace(/\s*\[↗\]\([^)]+\)/, '').trim();
-      current.items.push({ checked, text });
+      // Detect if this was done on a prior day (e.g. "— Mon")
+      const priorMatch = text.match(/\s—\s(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+      const priorDay = priorMatch ? priorMatch[1] : null;
+      current.items.push({ checked, text, priorDay });
     }
   }
-  return { title, meta, weekTargets, sections };
+  return { title, sections };
 }
 
 function splitItem(text) {
-  if (text.startsWith('_____')) {
-    const inner = text.match(/\*\(([^)]+)\)\*/);
-    return { label: 'Workout', detail: inner ? inner[1] : '' };
+  // "Bench Day (75min) — Tue" → { label: "Bench Day", detail: "75min — Tue" }
+  const dashIdx = text.indexOf(' — ');
+  const parenIdx = text.indexOf(' (');
+  if (parenIdx > 0) {
+    const label = text.slice(0, parenIdx);
+    const rest = text.slice(parenIdx + 1);
+    return { label, detail: rest };
+  }
+  if (dashIdx > 0) {
+    return { label: text.slice(0, dashIdx), detail: text.slice(dashIdx + 3) };
   }
   const colon = text.indexOf(': ');
   if (colon > 0 && colon < 20) return { label: text.slice(0, colon), detail: text.slice(colon + 2) };
-  const paren = text.indexOf(' (');
-  if (paren > 0) return { label: text.slice(0, paren), detail: text.slice(paren + 1) };
   return { label: text, detail: '' };
 }
 

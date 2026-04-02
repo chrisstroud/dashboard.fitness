@@ -277,62 +277,119 @@ def items_to_yaml(items: list[ActionItem]) -> str:
     return yaml.dump(records, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
+# --- Weekly spine ---
+
+WEEKS_DIR = ROOT / "weeks"
+
+# Workout definitions — strength and cardio
+STRENGTH_WORKOUTS = [
+    {"name": "Bench Day", "duration": "75min"},
+    {"name": "Squat Day", "duration": "80min"},
+    {"name": "Press Day", "duration": "80min"},
+    {"name": "Hinge Day", "duration": "70min"},
+]
+CARDIO_WORKOUTS = [
+    {"name": "Zone 2", "duration": "50min"},
+    {"name": "HIIT", "duration": "45min"},
+]
+
+
+def iso_week_file(d: date) -> Path:
+    iso = d.isocalendar()
+    return WEEKS_DIR / f"{iso.year}-W{iso.week:02d}.yaml"
+
+
+def monday_of_week(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def read_week_spine(d: date) -> dict:
+    """Read or initialize the weekly spine for the ISO week containing d."""
+    path = iso_week_file(d)
+    if path.exists():
+        return yaml.safe_load(path.read_text()) or {}
+    # Initialize empty spine
+    mon = monday_of_week(d)
+    return {
+        "week": f"{d.isocalendar().year}-W{d.isocalendar().week:02d}",
+        "start": mon.isoformat(),
+        "strength": {"target": 4, "done": []},
+        "cardio": {"target": 5, "done": []},
+    }
+
+
+def scan_week_completions(d: date) -> dict:
+    """Scan day files for the ISO week containing d and build the weekly spine."""
+    spine = read_week_spine(d)
+    mon = monday_of_week(d)
+    strength_done: list[dict] = []
+    cardio_done: list[dict] = []
+
+    strength_names = {w["name"] for w in STRENGTH_WORKOUTS}
+    cardio_names = {w["name"] for w in CARDIO_WORKOUTS}
+
+    for offset in range(7):
+        day = mon + timedelta(days=offset)
+        day_file = DAYS_DIR / f"{day.isoformat()}.md"
+        if not day_file.exists():
+            continue
+        content = day_file.read_text()
+        for line in content.splitlines():
+            if not line.startswith("- [x]"):
+                continue
+            text = line[6:].strip()
+            for name in strength_names:
+                if text.startswith(name):
+                    strength_done.append({"day": day.isoformat(), "workout": name})
+            for name in cardio_names:
+                if text.startswith(name):
+                    cardio_done.append({"day": day.isoformat(), "workout": name})
+
+    spine["strength"]["done"] = strength_done
+    spine["cardio"]["done"] = cardio_done
+    return spine
+
+
+def write_week_spine(d: date, spine: dict) -> None:
+    WEEKS_DIR.mkdir(parents=True, exist_ok=True)
+    path = iso_week_file(d)
+    path.write_text(yaml.dump(spine, default_flow_style=False, sort_keys=False))
+
+
 # --- Day view ---
 
-def source_link(item: ActionItem) -> str:
-    """Build a relative markdown link to the source file."""
-    path = item.source.split(":")[0]
-    # URL-encode spaces for markdown links
-    encoded = path.replace(" ", "%20")
-    return f"[↗]({encoded})"
-
-
 def compact_checklist(item: ActionItem) -> str:
-    """Render a checklist as a single compact line: Name — item · item · item [↗]"""
     names = []
     for child in item.children:
-        # Strip dose parens for compactness: "Fish Oil (EPA/DHA) (3–5g)" → "Fish Oil"
-        # Keep first word group before any parenthetical
-        short = child.split("(")[0].strip()
-        # Drop markdown bold markers
-        short = short.replace("**", "")
+        short = child.split("(")[0].strip().replace("**", "")
         if short:
             names.append(short)
     return " · ".join(names)
 
 
-def generate_today(items: list[ActionItem], d: date | None = None) -> str:
+def generate_day(items: list[ActionItem], d: date, spine: dict) -> str:
     d = d or date.today()
     day_name = d.strftime("%A")
 
-    # Buckets
-    weekly: list[str] = []
-    cycle_notes: list[str] = []
+    # Classify items
     morning_items: list[ActionItem] = []
     evening_items: list[ActionItem] = []
     anytime_items: list[ActionItem] = []
-    checklists: dict[str, ActionItem] = {}  # keyed by name for smart grouping
+    checklists: dict[str, ActionItem] = {}
 
     for item in items:
-        if item.cycle and not item.item_type:
-            cycle_notes.append(f"{item.name} ({item.cycle})")
-
         freq = item.frequency or ""
         t = item.time or ""
 
         if item.item_type == "checklist":
             checklists[item.name.lower()] = item
             continue
-
         if "/week" in freq:
-            weekly.append(item)
-            continue
-
+            continue  # handled by workout section
         if "2x/day" in freq:
             morning_items.append(item)
             evening_items.append(item)
             continue
-
         if "/day" in freq:
             if t and t < "12:00":
                 morning_items.append(item)
@@ -341,47 +398,61 @@ def generate_today(items: list[ActionItem], d: date | None = None) -> str:
             else:
                 anytime_items.append(item)
 
+    # What's been done this week
+    strength_done_names = {e["workout"] for e in spine.get("strength", {}).get("done", [])}
+    cardio_done_workouts = spine.get("cardio", {}).get("done", [])
+    cardio_done_count = len(cardio_done_workouts)
+    hiit_done = any(e["workout"] == "HIIT" for e in cardio_done_workouts)
+    zone2_done_count = sum(1 for e in cardio_done_workouts if e["workout"] == "Zone 2")
+
     # --- Build output ---
     lines: list[str] = []
 
-    # Header
+    # Header — clean, just the day
     lines.append(f"# {day_name}, {d.strftime('%B %-d')}")
     lines.append("")
-    if cycle_notes:
-        lines.append(f"> {' · '.join(cycle_notes)}")
-        lines.append("")
-
-    # Weekly targets — compact single block
-    if weekly:
-        targets = []
-        for w in weekly:
-            dur = f" ({w.duration})" if w.duration else ""
-            targets.append(f"{w.name}{dur}")
-        lines.append(f"**This week:** {' · '.join(targets)}")
-        lines.append("")
 
     # --- Morning ---
     lines.append("## Morning")
     lines.append("")
     for item in morning_items:
         dur = f" ({item.duration})" if item.duration else ""
-        lines.append(f"- [ ] {item.name}{dur} {source_link(item)}")
-
-    # Morning supplements — compact
+        lines.append(f"- [ ] {item.name}{dur}")
     am_supps = checklists.get("morning supplements")
     if am_supps:
-        summary = compact_checklist(am_supps)
-        lines.append(f"- [ ] Supplements: {summary} {source_link(am_supps)}")
-
+        lines.append(f"- [ ] Supplements: {compact_checklist(am_supps)}")
     lines.append("")
 
     # --- Workout ---
     lines.append("## Workout")
     lines.append("")
-    lines.append("- [ ] _____ *(Bench · Squat · Press · Hinge · Zone 2 · HIIT)*")
+
+    # Strength
+    for w in STRENGTH_WORKOUTS:
+        if w["name"] in strength_done_names:
+            # Find which day it was done
+            day_label = ""
+            for e in spine["strength"]["done"]:
+                if e["workout"] == w["name"]:
+                    done_date = date.fromisoformat(e["day"])
+                    day_label = f" — {done_date.strftime('%a')}"
+                    break
+            lines.append(f"- [x] {w['name']} ({w['duration']}){day_label}")
+        else:
+            lines.append(f"- [ ] {w['name']} ({w['duration']})")
+
+    # Cardio
+    z2_label = f" — {zone2_done_count}/4 this week" if zone2_done_count > 0 else ""
+    lines.append(f"- [ ] Zone 2 (50min){z2_label}")
+    if hiit_done:
+        lines.append("- [x] HIIT (45min) — done this week")
+    else:
+        lines.append("- [ ] HIIT (45min)")
+
+    # Anytime items (dog walk etc.)
     for item in anytime_items:
         dur = f" ({item.duration})" if item.duration else ""
-        lines.append(f"- [ ] {item.name}{dur} {source_link(item)}")
+        lines.append(f"- [ ] {item.name}{dur}")
     lines.append("")
 
     # --- Evening ---
@@ -389,25 +460,10 @@ def generate_today(items: list[ActionItem], d: date | None = None) -> str:
     lines.append("")
     for item in evening_items:
         dur = f" ({item.duration})" if item.duration else ""
-        lines.append(f"- [ ] {item.name}{dur} {source_link(item)}")
-
-    # Evening supplements — compact
+        lines.append(f"- [ ] {item.name}{dur}")
     pm_supps = checklists.get("evening supplements")
     if pm_supps:
-        summary = compact_checklist(pm_supps)
-        lines.append(f"- [ ] Supplements: {summary} {source_link(pm_supps)}")
-
-    lines.append("")
-
-    # --- Reference links ---
-    lines.append("---")
-    lines.append("")
-    refs = [
-        "[Morning routine](docs/Daily%20Routine.md#morning)",
-        "[Evening routine](docs/Daily%20Routine.md#evening)",
-        "[Training program](Volume%20Daddy/Training%20Program.md)",
-    ]
-    lines.append(" · ".join(refs))
+        lines.append(f"- [ ] Supplements: {compact_checklist(pm_supps)}")
     lines.append("")
 
     return "\n".join(lines)
@@ -421,6 +477,7 @@ ROLLING_DAYS = 7
 def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DAYS_DIR.mkdir(parents=True, exist_ok=True)
+    WEEKS_DIR.mkdir(parents=True, exist_ok=True)
 
     items = parse_all()
     if not items:
@@ -432,14 +489,27 @@ def main() -> None:
     SCHEDULE_YAML_PATH.write_text(yaml_content)
     print(f"Wrote {len(items)} items → {SCHEDULE_YAML_PATH.relative_to(ROOT)}")
 
-    # Generate rolling 7 days (only if file doesn't exist — preserve checkmarks)
+    # Scan and write weekly spine
     today = date.today()
+    spine = scan_week_completions(today)
+    write_week_spine(today, spine)
+    s_done = len(spine["strength"]["done"])
+    c_done = len(spine["cardio"]["done"])
+    print(f"Week spine: strength {s_done}/4, cardio {c_done}/5")
+
+    # Generate rolling 7 days (only if file doesn't exist — preserve checkmarks)
     generated = 0
     for offset in range(ROLLING_DAYS):
         d = today + timedelta(days=offset)
         day_file = DAYS_DIR / f"{d.isoformat()}.md"
         if not day_file.exists():
-            day_file.write_text(generate_today(items, d))
+            # Use spine for current week, empty spine for next week
+            if d.isocalendar().week == today.isocalendar().week:
+                day_spine = spine
+            else:
+                day_spine = scan_week_completions(d)
+                write_week_spine(d, day_spine)
+            day_file.write_text(generate_day(items, d, day_spine))
             generated += 1
 
     print(f"Generated {generated} new day files ({ROLLING_DAYS - generated} already existed)")
