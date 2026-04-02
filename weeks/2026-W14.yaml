@@ -9,4 +9,6 @@ strength:
     workout: Hinge Day
 cardio:
   target: 5
-  done: []
+  done:
+  - day: '2026-04-02'
+    workout: Zone 2
