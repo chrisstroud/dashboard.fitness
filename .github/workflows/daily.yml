@@ -1,0 +1,33 @@
+name: Generate Daily Schedule
+
+on:
+  schedule:
+    - cron: '30 9 * * *'  # 4:30 AM CDT (UTC-5)
+  push:
+    paths:
+      - 'docs/**'
+      - 'Volume Daddy/**'
+      - 'scripts/schedule.py'
+  workflow_dispatch:  # manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install pyyaml
+
+      - run: python scripts/schedule.py
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'generate daily schedule'
+          file_pattern: 'days/*.md data/schedule.yaml'

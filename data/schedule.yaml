@@ -1,0 +1,112 @@
+- name: Strength
+  source: Volume Daddy/Training Program.md:5
+  frequency: 4x/week
+- name: Bench Day — Bench, incline, rows, shoulders, arms
+  source: Volume Daddy/Training Program.md:7
+  duration: 75min
+- name: Squat Day — Back squat, Bulgarians, weighted chins
+  source: Volume Daddy/Training Program.md:8
+  duration: 80min
+- name: Press Day — OHP, shoulders, arms, back extensions
+  source: Volume Daddy/Training Program.md:9
+  duration: 80min
+- name: Hinge Day — Deadlift/RDL, glutes, hamstrings, rows
+  source: Volume Daddy/Training Program.md:10
+  duration: 70min
+- name: Cardio
+  source: Volume Daddy/Training Program.md:12
+  frequency: 5x/week
+- name: HIIT hill ride
+  source: Volume Daddy/Training Program.md:15
+  frequency: 1x/week
+  duration: 45min
+  type: calendar
+- name: Zone 2 bike ride
+  source: Volume Daddy/Training Program.md:16
+  frequency: 4x/week
+  duration: 50min
+  type: calendar
+- name: TM meditation
+  source: Volume Daddy/Training Program.md:20
+  frequency: 2x/day
+  duration: 20min
+  type: calendar
+- name: Dog walk
+  source: Volume Daddy/Training Program.md:21
+  frequency: 1x/day
+  type: reminder
+- name: Cyclic sighing
+  source: Volume Daddy/Training Program.md:22
+  frequency: 1x/day
+  time: '20:00'
+  duration: 5min
+  type: reminder
+- name: Deload
+  source: Volume Daddy/Training Program.md:24
+  cycle: 3on/1off
+- name: Morning
+  source: docs/Daily Routine.md:3
+  frequency: 1x/day
+  time: 05:00
+  type: checklist
+  items:
+  - Bathroom — pee, splash water on face and hair
+  - Brush teeth before coffee (protects enamel from acid) + tongue scrape
+  - Health — exercise + morning light exposure
+  - '**6–6:30AM** — coffee (delay 60-90 min after waking to preserve natural cortisol
+    curve)'
+  - Prep
+  - Shower
+  - Vitamin C serum → mineral sunscreen (SPF 30-50 if UV index 3+) → moisturize
+  - 'Dress: pants, white shoes, shirt'
+  - Breakfast
+  - 'Shake: water + 50g whey + 10g creatine + 2 tbsp chia seeds'
+  - 1 cup oats + cinnamon + raw honey
+- name: Evening
+  source: docs/Daily Routine.md:17
+  frequency: 1x/day
+  time: '18:00'
+  type: checklist
+  items:
+  - '**6PM** (3 hrs before bed) — dinner'
+  - '**7PM** (2 hrs before bed) — stop eating'
+  - '**8PM** (1 hr before bed)'
+  - No more liquids
+  - Hot tub *(future)*
+  - No blue light in bedroom — Kindle only
+  - '**8–9PM**'
+  - 'Supplements: L-Theanine + Magnesium Glycinate + Glycine + Ashwagandha KSM-66'
+  - Foam face wash + cyclic sighing (5 min — double inhale nose, long slow exhale
+    mouth)
+  - Deep floss + 2-minute brush
+  - Retinol + moisturize
+  - Lock front door, open window
+  - '**Bed**'
+  - Take shirt off
+  - Read book or Kindle
+  - Charge phone in other room
+- name: Morning Supplements
+  source: docs/Daily Routine.md:67
+  frequency: 1x/day
+  time: 06:00
+  type: checklist
+  items:
+  - Fish Oil (EPA/DHA) (3–5g combined)
+  - Vitamin D3 + K2 (5,000 IU D3 / 200mcg K2)
+  - Zinc Picolinate (15–20mg)
+  - Boron (10mg)
+  - Creatine Monohydrate (10g)
+  - Multivitamin (1x)
+- name: Evening Supplements
+  source: docs/Daily Routine.md:78
+  frequency: 1x/day
+  time: '20:00'
+  type: checklist
+  items:
+  - Magnesium Glycinate (400mg)
+  - L-Theanine (200mg)
+  - Ashwagandha KSM-66 (600mg)
+  - Glycine (3–5g)
+- name: Ashwagandha KSM-66
+  source: docs/Daily Routine.md:84
+  cycle: 4on/1off

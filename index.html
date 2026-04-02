@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<title>Today</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9744;</text></svg>">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --border: #e5e7eb;
+    --check-bg: #f0fdf4;
+    --section-bg: #f9fafb;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0a;
+      --fg: #e5e5e5;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --border: #27272a;
+      --check-bg: #052e16;
+      --section-bg: #111111;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.5;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    max-width: 500px;
+    margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 24px 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .meta {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+  }
+  .week-targets {
+    font-size: 0.85rem;
+    color: var(--muted);
+    padding: 8px 12px;
+    background: var(--section-bg);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+  }
+  .section {
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    transition: background 0.15s;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .item:active { background: var(--section-bg); }
+  .item.checked { opacity: 0.5; }
+  .item.checked .item-text { text-decoration: line-through; }
+  .item.checked .checkbox { background: var(--check-bg); border-color: #22c55e; }
+  .item.checked .checkbox::after { content: '\2713'; color: #22c55e; font-size: 14px; }
+  .checkbox {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: all 0.15s;
+  }
+  .item-text {
+    flex: 1;
+    font-size: 0.95rem;
+  }
+  .item-text .label {
+    font-weight: 500;
+  }
+  .item-text .detail {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  .source-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.75rem;
+    opacity: 0.5;
+  }
+  .refs {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .refs a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.8rem;
+  }
+  .sync-dot {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .sync-dot.saving { background: #f59e0b; opacity: 1; }
+  .sync-dot.saved { background: #22c55e; opacity: 1; }
+  .sync-dot.error { background: #ef4444; opacity: 1; }
+
+  /* Setup screen */
+  .setup {
+    padding: 40px 16px;
+    text-align: center;
+  }
+  .setup h2 { font-size: 1.3rem; margin-bottom: 12px; }
+  .setup p { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .setup input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--section-bg);
+    color: var(--fg);
+    font-size: 1rem;
+    margin-bottom: 12px;
+  }
+  .setup button, .setup a.btn {
+    display: inline-block;
+    padding: 10px 24px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .setup .hint {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty h2 { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="sync-dot" class="sync-dot"></div>
+<div id="app"></div>
+
+<script>
+const REPO = 'chrisstroud/dashboard.fitness';
+const TOKEN_KEY = 'df_gh_token';
+const REPO_KEY = 'df_gh_repo';
+
+// --- State ---
+let fileSha = null;
+let rawMarkdown = '';
+let commitQueue = null;  // debounce timer
+
+// --- Helpers ---
+function today() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function getRepo() { return localStorage.getItem(REPO_KEY) || REPO; }
+
+function syncStatus(state) {
+  const dot = document.getElementById('sync-dot');
+  dot.className = 'sync-dot ' + state;
+  if (state === 'saved') setTimeout(() => dot.className = 'sync-dot', 1500);
+}
+
+// --- GitHub API ---
+async function ghFetch(path, opts = {}) {
+  const token = getToken();
+  const repo = getRepo();
+  const res = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+    ...opts,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      ...(opts.headers || {}),
+    },
+  });
+  return res;
+}
+
+async function fetchToday() {
+  const path = `contents/days/${today()}.md`;
+  const res = await ghFetch(path);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+  const data = await res.json();
+  fileSha = data.sha;
+  rawMarkdown = atob(data.content.replace(/\n/g, ''));
+  // Handle UTF-8
+  rawMarkdown = decodeURIComponent(escape(rawMarkdown));
+  return rawMarkdown;
+}
+
+async function commitFile(content) {
+  syncStatus('saving');
+  const path = `contents/days/${today()}.md`;
+  // Encode as base64 (handle UTF-8)
+  const encoded = btoa(unescape(encodeURIComponent(content)));
+  const res = await ghFetch(path, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: `check: ${today()}`,
+      content: encoded,
+      sha: fileSha,
+    }),
+  });
+  if (!res.ok) {
+    syncStatus('error');
+    // SHA conflict — re-fetch and retry
+    if (res.status === 409) {
+      await fetchToday();
+      render(rawMarkdown);
+    }
+    return;
+  }
+  const data = await res.json();
+  fileSha = data.content.sha;
+  syncStatus('saved');
+}
+
+function scheduleCommit() {
+  if (commitQueue) clearTimeout(commitQueue);
+  commitQueue = setTimeout(() => commitFile(rawMarkdown), 600);
+}
+
+// --- Rendering ---
+function parseMarkdown(md) {
+  const lines = md.split('\n');
+  const sections = [];
+  let current = null;
+  let title = '';
+  let meta = '';
+  let weekTargets = '';
+
+  for (const line of lines) {
+    // Title
+    if (line.startsWith('# ')) {
+      title = line.slice(2);
+      continue;
+    }
+    // Blockquote (cycle info)
+    if (line.startsWith('> ')) {
+      meta = line.slice(2);
+      continue;
+    }
+    // Bold line (week targets)
+    if (line.startsWith('**This week:**')) {
+      weekTargets = line.replace(/\*\*/g, '');
+      continue;
+    }
+    // Section heading
+    if (line.startsWith('## ')) {
+      current = { title: line.slice(3), items: [] };
+      sections.push(current);
+      continue;
+    }
+    // Checkbox item
+    if (line.startsWith('- [')) {
+      const checked = line.charAt(3) === 'x';
+      let text = line.slice(6);
+      // Extract source link
+      const linkMatch = text.match(/\[↗\]\(([^)]+)\)/);
+      const sourceUrl = linkMatch ? linkMatch[1] : null;
+      text = text.replace(/\s*\[↗\]\([^)]+\)/, '').trim();
+      if (current) {
+        current.items.push({ checked, text, sourceUrl, lineText: line });
+      }
+      continue;
+    }
+    // Horizontal rule
+    if (line.startsWith('---')) continue;
+    // Reference links at bottom (ignore — we handle refs differently)
+  }
+
+  return { title, meta, weekTargets, sections };
+}
+
+function render(md) {
+  const { title, meta, weekTargets, sections } = parseMarkdown(md);
+  const app = document.getElementById('app');
+
+  let html = `<h1>${esc(title)}</h1>`;
+  if (meta) html += `<div class="meta">${esc(meta)}</div>`;
+  if (weekTargets) html += `<div class="week-targets">${esc(weekTargets)}</div>`;
+
+  for (const section of sections) {
+    html += `<div class="section">`;
+    html += `<div class="section-title">${esc(section.title)}</div>`;
+    for (let i = 0; i < section.items.length; i++) {
+      const item = section.items[i];
+      const checkedClass = item.checked ? ' checked' : '';
+      // Split into label and detail
+      const parts = splitItem(item.text);
+      html += `<div class="item${checkedClass}" data-section="${esc(section.title)}" data-index="${i}">`;
+      html += `<div class="checkbox"></div>`;
+      html += `<div class="item-text">`;
+      html += `<span class="label">${esc(parts.label)}</span>`;
+      if (parts.detail) html += ` <span class="detail">${esc(parts.detail)}</span>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Reference links
+  html += `<div class="refs">`;
+  html += `<a href="https://github.com/${getRepo()}/tree/main/docs">Routines</a>`;
+  html += `<a href="https://github.com/${getRepo()}/tree/main/Volume%20Daddy">Training</a>`;
+  html += `<a href="https://github.com/${getRepo()}/tree/main/days">History</a>`;
+  html += `</div>`;
+
+  app.innerHTML = html;
+
+  // Attach click handlers
+  app.querySelectorAll('.item').forEach(el => {
+    el.addEventListener('click', () => toggleItem(el));
+  });
+}
+
+function splitItem(text) {
+  // "TM meditation (20min)" → { label: "TM meditation", detail: "(20min)" }
+  // "Supplements: Fish Oil · D3..." → { label: "Supplements", detail: "Fish Oil · D3..." }
+  // "_____ *(Bench · ...)*" → { label: "Pick a workout", detail: "Bench · Squat · Press · Hinge · Zone 2 · HIIT" }
+  if (text.startsWith('_____')) {
+    const inner = text.match(/\*\(([^)]+)\)\*/);
+    return { label: 'Workout', detail: inner ? inner[1] : '' };
+  }
+  const colonIdx = text.indexOf(': ');
+  if (colonIdx > 0 && colonIdx < 20) {
+    return { label: text.slice(0, colonIdx), detail: text.slice(colonIdx + 2) };
+  }
+  const parenIdx = text.indexOf(' (');
+  if (parenIdx > 0) {
+    return { label: text.slice(0, parenIdx), detail: text.slice(parenIdx + 1) };
+  }
+  return { label: text, detail: '' };
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function toggleItem(el) {
+  const section = el.dataset.section;
+  const index = parseInt(el.dataset.index);
+  const isChecked = el.classList.contains('checked');
+
+  // Toggle visual state immediately
+  el.classList.toggle('checked');
+
+  // Update raw markdown
+  const lines = rawMarkdown.split('\n');
+  let sectionFound = false;
+  let itemCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('## ') && lines[i].slice(3) === section) {
+      sectionFound = true;
+      continue;
+    }
+    if (sectionFound && lines[i].startsWith('## ')) break;  // next section
+    if (sectionFound && lines[i].startsWith('- [')) {
+      if (itemCount === index) {
+        if (isChecked) {
+          lines[i] = lines[i].replace('- [x]', '- [ ]');
+        } else {
+          lines[i] = lines[i].replace('- [ ]', '- [x]');
+        }
+        break;
+      }
+      itemCount++;
+    }
+  }
+
+  rawMarkdown = lines.join('\n');
+  scheduleCommit();
+}
+
+// --- Setup screen ---
+function showSetup() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="setup">
+      <h2>dashboard.fitness</h2>
+      <p>Connect to your GitHub repo to sync your daily checklist.</p>
+      <input id="token-input" type="password" placeholder="GitHub personal access token">
+      <br>
+      <button onclick="saveToken()">Connect</button>
+      <p class="hint">
+        Create a <a href="https://github.com/settings/tokens?type=beta" style="color:var(--accent)">fine-grained token</a>
+        with <strong>Contents: Read and write</strong> access to your dashboard.fitness repo.
+      </p>
+    </div>
+  `;
+}
+
+function saveToken() {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) return;
+  localStorage.setItem(TOKEN_KEY, token);
+  init();
+}
+
+// --- Init ---
+async function init() {
+  const token = getToken();
+  if (!token) { showSetup(); return; }
+
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="empty"><p>Loading...</p></div>';
+
+  try {
+    const md = await fetchToday();
+    if (!md) {
+      app.innerHTML = `
+        <div class="empty">
+          <h2>No schedule for today</h2>
+          <p>Run the generator or wait for the daily GitHub Action.</p>
+        </div>`;
+      return;
+    }
+    render(md);
+  } catch (e) {
+    app.innerHTML = `
+      <div class="empty">
+        <h2>Connection error</h2>
+        <p>${esc(e.message)}</p>
+        <button onclick="localStorage.removeItem('${TOKEN_KEY}');init()"
+                style="margin-top:12px;padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer">
+          Reset token
+        </button>
+      </div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
