@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<title>Today</title>
+<title>dashboard.fitness</title>
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9744;</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
     --bg: #ffffff;
@@ -19,7 +19,10 @@
     --border: #e5e7eb;
     --check-bg: #f0fdf4;
     --section-bg: #f9fafb;
+    --card-bg: #ffffff;
     --radius: 12px;
+    --tab-bg: #f9fafb;
+    --tab-border: #e5e7eb;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -30,6 +33,9 @@
       --border: #27272a;
       --check-bg: #052e16;
       --section-bg: #111111;
+      --card-bg: #18181b;
+      --tab-bg: #111111;
+      --tab-border: #27272a;
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,49 +44,71 @@
     background: var(--bg);
     color: var(--fg);
     line-height: 1.5;
-    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
-    max-width: 500px;
-    margin: 0 auto;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 72px; /* tab bar */
   }
-  h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin: 24px 0 4px;
-    letter-spacing: -0.02em;
+
+  /* --- Sync bar --- */
+  .sync-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 4px 12px; font-size: 0.75rem; text-align: center;
+    z-index: 100; transform: translateY(-100%); transition: transform 0.3s;
   }
-  .meta {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin-bottom: 8px;
+  .sync-bar.visible { transform: translateY(0); }
+  .sync-bar.saving { background: #f59e0b; color: #000; }
+  .sync-bar.saved { background: #22c55e; color: #000; }
+  .sync-bar.error { background: #ef4444; color: #fff; }
+
+  /* --- Header --- */
+  .header {
+    padding: env(safe-area-inset-top, 12px) 16px 8px;
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; background: var(--bg); z-index: 50;
+    border-bottom: 1px solid var(--border);
   }
-  .week-targets {
-    font-size: 0.85rem;
-    color: var(--muted);
-    padding: 8px 12px;
-    background: var(--section-bg);
-    border-radius: var(--radius);
-    margin-bottom: 20px;
+  .header .back {
+    font-size: 1.5rem; color: var(--accent); text-decoration: none;
+    line-height: 1; padding: 4px; cursor: pointer; display: none;
   }
-  .section {
-    margin-bottom: 20px;
+  .header .back.visible { display: block; }
+  .header .title {
+    font-size: 1.1rem; font-weight: 600; flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .header .settings {
+    color: var(--muted); font-size: 1.2rem; cursor: pointer;
+    padding: 4px; text-decoration: none;
+  }
+
+  /* --- Content area --- */
+  #content {
+    padding: 16px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* --- Today view (interactive checkboxes) --- */
+  .today h1 {
+    font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .today .meta {
+    color: var(--muted); font-size: 0.85rem; margin-bottom: 8px;
+  }
+  .today .week-targets {
+    font-size: 0.85rem; color: var(--muted);
+    padding: 8px 12px; background: var(--section-bg);
+    border-radius: var(--radius); margin-bottom: 20px;
+  }
+  .section { margin-bottom: 20px; }
   .section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    margin-bottom: 8px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px;
   }
   .item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: var(--radius);
-    transition: background 0.15s;
-    cursor: pointer;
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 12px; border-radius: var(--radius);
+    transition: background 0.15s; cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
   .item:active { background: var(--section-bg); }
@@ -89,147 +117,175 @@
   .item.checked .checkbox { background: var(--check-bg); border-color: #22c55e; }
   .item.checked .checkbox::after { content: '\2713'; color: #22c55e; font-size: 14px; }
   .checkbox {
-    width: 22px;
-    height: 22px;
-    min-width: 22px;
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 1px;
-    transition: all 0.15s;
+    width: 22px; height: 22px; min-width: 22px;
+    border: 2px solid var(--border); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px; transition: all 0.15s;
   }
-  .item-text {
-    flex: 1;
-    font-size: 0.95rem;
-  }
-  .item-text .label {
-    font-weight: 500;
-  }
-  .item-text .detail {
-    color: var(--muted);
-    font-size: 0.8rem;
-  }
-  .source-link {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.75rem;
-    opacity: 0.5;
-  }
-  .refs {
-    padding: 12px 0;
-    border-top: 1px solid var(--border);
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .refs a {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 0.8rem;
-  }
-  .sync-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    padding: 4px 12px;
-    font-size: 0.75rem;
-    text-align: center;
-    z-index: 100;
-    transform: translateY(-100%);
-    transition: transform 0.3s;
-  }
-  .sync-bar.visible { transform: translateY(0); }
-  .sync-bar.saving { background: #f59e0b; color: #000; }
-  .sync-bar.saved { background: #22c55e; color: #000; }
-  .sync-bar.error { background: #ef4444; color: #fff; }
+  .item-text { flex: 1; font-size: 0.95rem; }
+  .item-text .label { font-weight: 500; }
+  .item-text .detail { color: var(--muted); font-size: 0.8rem; }
 
-  /* Setup screen */
-  .setup {
-    padding: 40px 16px;
-    text-align: center;
+  /* --- File list view --- */
+  .file-list { list-style: none; }
+  .file-list li {
+    border-bottom: 1px solid var(--border);
   }
+  .file-list a {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 4px; color: var(--fg); text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .file-list a:active { background: var(--section-bg); }
+  .file-list .icon { font-size: 1.2rem; width: 28px; text-align: center; }
+  .file-list .name { flex: 1; font-size: 0.95rem; }
+  .file-list .arrow { color: var(--muted); font-size: 0.9rem; }
+
+  /* --- Markdown rendered view --- */
+  .md-view { font-size: 0.95rem; line-height: 1.65; }
+  .md-view h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 12px; }
+  .md-view h2 { font-size: 1.2rem; font-weight: 600; margin: 20px 0 8px; color: var(--fg); }
+  .md-view h3 { font-size: 1.05rem; font-weight: 600; margin: 16px 0 6px; }
+  .md-view h4 { font-size: 0.9rem; font-weight: 600; margin: 12px 0 4px; }
+  .md-view p { margin: 8px 0; }
+  .md-view ul, .md-view ol { padding-left: 20px; margin: 8px 0; }
+  .md-view li { margin: 4px 0; }
+  .md-view li input[type="checkbox"] {
+    margin-right: 6px; transform: scale(1.15); vertical-align: middle;
+  }
+  .md-view blockquote {
+    border-left: 3px solid var(--accent); padding: 4px 12px;
+    margin: 8px 0; color: var(--muted); background: var(--section-bg);
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .md-view table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 0.85rem; overflow-x: auto; display: block;
+  }
+  .md-view th, .md-view td {
+    border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  }
+  .md-view th { background: var(--section-bg); font-weight: 600; }
+  .md-view code {
+    background: var(--section-bg); padding: 2px 6px; border-radius: 4px;
+    font-size: 0.85em;
+  }
+  .md-view pre { background: var(--section-bg); padding: 12px; border-radius: var(--radius); overflow-x: auto; margin: 12px 0; }
+  .md-view pre code { background: none; padding: 0; }
+  .md-view hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .md-view a { color: var(--accent); text-decoration: none; }
+  .md-view strong { font-weight: 600; }
+  .md-view em { font-style: italic; color: var(--muted); }
+  .md-view img { max-width: 100%; border-radius: var(--radius); }
+
+  /* --- Tab bar --- */
+  .tabs {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; background: var(--tab-bg);
+    border-top: 1px solid var(--tab-border);
+    padding: 4px 0 env(safe-area-inset-bottom, 8px);
+    z-index: 50;
+  }
+  .tabs a {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 6px 0; text-decoration: none;
+    color: var(--muted); font-size: 0.65rem; font-weight: 500;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s;
+  }
+  .tabs a.active { color: var(--accent); }
+  .tabs a .tab-icon { font-size: 1.3rem; line-height: 1; }
+
+  /* --- Setup / empty states --- */
+  .setup { padding: 40px 16px; text-align: center; }
   .setup h2 { font-size: 1.3rem; margin-bottom: 12px; }
   .setup p { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
   .setup input {
-    width: 100%;
-    padding: 12px;
-    border: 2px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--section-bg);
-    color: var(--fg);
-    font-size: 1rem;
-    margin-bottom: 12px;
+    width: 100%; padding: 12px; border: 2px solid var(--border);
+    border-radius: var(--radius); background: var(--section-bg);
+    color: var(--fg); font-size: 1rem; margin-bottom: 12px;
   }
-  .setup button, .setup a.btn {
-    display: inline-block;
-    padding: 10px 24px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    text-decoration: none;
+  .setup button {
+    padding: 10px 24px; background: var(--accent); color: white;
+    border: none; border-radius: var(--radius);
+    font-size: 0.95rem; font-weight: 500; cursor: pointer;
   }
-  .setup .hint {
-    font-size: 0.8rem;
-    color: var(--muted);
-    margin-top: 16px;
-  }
-
-  .empty {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--muted);
-  }
-  .empty h2 { margin-bottom: 8px; }
+  .setup .hint { font-size: 0.8rem; color: var(--muted); margin-top: 16px; }
+  .setup .hint a { color: var(--accent); }
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .loading { text-align: center; padding: 40px; color: var(--muted); }
 </style>
 </head>
 <body>
 <div id="sync-bar" class="sync-bar"></div>
-<div id="app"></div>
+
+<div class="header">
+  <span id="back-btn" class="back" onclick="goBack()">&#8249;</span>
+  <span id="header-title" class="title">Today</span>
+  <span class="settings" onclick="showSettings()">&#9881;</span>
+</div>
+
+<div id="content"></div>
+
+<nav class="tabs">
+  <a href="#today" onclick="go('today')">
+    <span class="tab-icon">&#9745;</span>Today
+  </a>
+  <a href="#training" onclick="go('training')">
+    <span class="tab-icon">&#9883;</span>Training
+  </a>
+  <a href="#routines" onclick="go('routines')">
+    <span class="tab-icon">&#9201;</span>Routines
+  </a>
+  <a href="#history" onclick="go('history')">
+    <span class="tab-icon">&#9776;</span>History
+  </a>
+</nav>
 
 <script>
+// --- Config ---
 const REPO = 'chrisstroud/dashboard.fitness';
 const TOKEN_KEY = 'df_gh_token';
-const REPO_KEY = 'df_gh_repo';
 
 // --- State ---
 let fileSha = null;
 let rawMarkdown = '';
-let commitQueue = null;  // debounce timer
+let commitQueue = null;
+let navStack = [];
+let currentRoute = 'today';
 
 // --- Helpers ---
-function today() {
+function todayStr() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
-function getRepo() { return localStorage.getItem(REPO_KEY) || REPO; }
+function $(id) { return document.getElementById(id); }
 
 function syncStatus(state, msg) {
-  const bar = document.getElementById('sync-bar');
+  const bar = $('sync-bar');
   bar.className = 'sync-bar visible ' + state;
-  bar.textContent = msg || { saving: 'Saving...', saved: 'Saved', error: 'Sync failed' }[state];
+  bar.textContent = msg || {saving:'Saving...',saved:'Saved',error:'Sync failed'}[state];
   if (state === 'saved') setTimeout(() => bar.className = 'sync-bar', 1500);
+}
+
+function setHeader(title, showBack) {
+  $('header-title').textContent = title;
+  $('back-btn').classList.toggle('visible', !!showBack);
+}
+
+function setActiveTab(name) {
+  document.querySelectorAll('.tabs a').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + name);
+  });
 }
 
 // --- GitHub API ---
 async function ghFetch(path, opts = {}) {
-  const token = getToken();
-  const repo = getRepo();
-  const res = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/${path}`, {
     ...opts,
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${getToken()}`,
       'Accept': 'application/vnd.github.v3+json',
       ...(opts.headers || {}),
     },
@@ -237,41 +293,40 @@ async function ghFetch(path, opts = {}) {
   return res;
 }
 
-async function fetchToday() {
-  const path = `contents/days/${today()}.md`;
-  const res = await ghFetch(path);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+async function fetchFile(path) {
+  const res = await ghFetch(`contents/${path}`);
+  if (!res.ok) return null;
   const data = await res.json();
-  fileSha = data.sha;
-  rawMarkdown = atob(data.content.replace(/\n/g, ''));
-  // Handle UTF-8
-  rawMarkdown = decodeURIComponent(escape(rawMarkdown));
-  return rawMarkdown;
+  const content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
+  return { content, sha: data.sha, path: data.path };
+}
+
+async function fetchDir(path) {
+  const res = await ghFetch(`contents/${path}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+  return data.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 async function commitFile(content) {
   syncStatus('saving');
-  const path = `contents/days/${today()}.md`;
-  // Encode as base64 (handle UTF-8)
+  const path = `contents/days/${todayStr()}.md`;
   const encoded = btoa(unescape(encodeURIComponent(content)));
   try {
     const res = await ghFetch(path, {
       method: 'PUT',
-      body: JSON.stringify({
-        message: `check: ${today()}`,
-        content: encoded,
-        sha: fileSha,
-      }),
+      body: JSON.stringify({ message: `check: ${todayStr()}`, content: encoded, sha: fileSha }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      const msg = body.message || `HTTP ${res.status}`;
-      syncStatus('error', `Sync failed: ${msg}`);
-      // SHA conflict — re-fetch and retry
+      syncStatus('error', `Sync failed: ${body.message || 'HTTP ' + res.status}`);
       if (res.status === 409 || res.status === 422) {
-        await fetchToday();
-        render(rawMarkdown);
+        const file = await fetchFile(`days/${todayStr()}.md`);
+        if (file) { fileSha = file.sha; rawMarkdown = file.content; renderToday(rawMarkdown); }
       }
       return;
     }
@@ -288,117 +343,288 @@ function scheduleCommit() {
   commitQueue = setTimeout(() => commitFile(rawMarkdown), 600);
 }
 
-// --- Rendering ---
-function parseMarkdown(md) {
-  const lines = md.split('\n');
-  const sections = [];
-  let current = null;
-  let title = '';
-  let meta = '';
-  let weekTargets = '';
-
-  for (const line of lines) {
-    // Title
-    if (line.startsWith('# ')) {
-      title = line.slice(2);
-      continue;
-    }
-    // Blockquote (cycle info)
-    if (line.startsWith('> ')) {
-      meta = line.slice(2);
-      continue;
-    }
-    // Bold line (week targets)
-    if (line.startsWith('**This week:**')) {
-      weekTargets = line.replace(/\*\*/g, '');
-      continue;
-    }
-    // Section heading
-    if (line.startsWith('## ')) {
-      current = { title: line.slice(3), items: [] };
-      sections.push(current);
-      continue;
-    }
-    // Checkbox item
-    if (line.startsWith('- [')) {
-      const checked = line.charAt(3) === 'x';
-      let text = line.slice(6);
-      // Extract source link
-      const linkMatch = text.match(/\[↗\]\(([^)]+)\)/);
-      const sourceUrl = linkMatch ? linkMatch[1] : null;
-      text = text.replace(/\s*\[↗\]\([^)]+\)/, '').trim();
-      if (current) {
-        current.items.push({ checked, text, sourceUrl, lineText: line });
-      }
-      continue;
-    }
-    // Horizontal rule
-    if (line.startsWith('---')) continue;
-    // Reference links at bottom (ignore — we handle refs differently)
+// --- Router ---
+function go(route, pushStack) {
+  if (pushStack !== false && currentRoute !== route) {
+    navStack.push(currentRoute);
   }
+  currentRoute = route;
+  window.location.hash = route;
 
-  return { title, meta, weekTargets, sections };
+  const token = getToken();
+  if (!token) { showSetup(); return; }
+
+  if (route === 'today') loadToday();
+  else if (route === 'training') loadDir('Volume Daddy', 'Training');
+  else if (route === 'routines') loadRoutines();
+  else if (route === 'history') loadDir('days', 'History');
+  else if (route.startsWith('file/')) loadFile(route.slice(5));
+  else if (route === 'settings') showSettingsPage();
 }
 
-function render(md) {
-  const { title, meta, weekTargets, sections } = parseMarkdown(md);
-  const app = document.getElementById('app');
+function goBack() {
+  const prev = navStack.pop();
+  if (prev) go(prev, false);
+  else go('today', false);
+}
 
-  let html = `<h1>${esc(title)}</h1>`;
+// --- Today view ---
+async function loadToday() {
+  setHeader('Today', false);
+  setActiveTab('today');
+  $('content').innerHTML = '<div class="loading">Loading...</div>';
+
+  const file = await fetchFile(`days/${todayStr()}.md`);
+  if (!file) {
+    $('content').innerHTML = '<div class="empty"><h2>No schedule for today</h2><p>Wait for the daily GitHub Action or run the generator.</p></div>';
+    return;
+  }
+  fileSha = file.sha;
+  rawMarkdown = file.content;
+  renderToday(rawMarkdown);
+}
+
+function renderToday(md) {
+  const { title, meta, weekTargets, sections } = parseTodayMd(md);
+  let html = '<div class="today">';
+  html += `<h1>${esc(title)}</h1>`;
   if (meta) html += `<div class="meta">${esc(meta)}</div>`;
   if (weekTargets) html += `<div class="week-targets">${esc(weekTargets)}</div>`;
 
   for (const section of sections) {
-    html += `<div class="section">`;
+    html += '<div class="section">';
     html += `<div class="section-title">${esc(section.title)}</div>`;
     for (let i = 0; i < section.items.length; i++) {
       const item = section.items[i];
-      const checkedClass = item.checked ? ' checked' : '';
-      // Split into label and detail
+      const cls = item.checked ? ' checked' : '';
       const parts = splitItem(item.text);
-      html += `<div class="item${checkedClass}" data-section="${esc(section.title)}" data-index="${i}">`;
-      html += `<div class="checkbox"></div>`;
-      html += `<div class="item-text">`;
+      html += `<div class="item${cls}" data-section="${esc(section.title)}" data-index="${i}">`;
+      html += '<div class="checkbox"></div><div class="item-text">';
       html += `<span class="label">${esc(parts.label)}</span>`;
       if (parts.detail) html += ` <span class="detail">${esc(parts.detail)}</span>`;
-      html += `</div>`;
-      html += `</div>`;
+      html += '</div></div>';
     }
-    html += `</div>`;
+    html += '</div>';
   }
+  html += '</div>';
+  $('content').innerHTML = html;
 
-  // Reference links
-  html += `<div class="refs">`;
-  html += `<a href="https://github.com/${getRepo()}/tree/main/docs">Routines</a>`;
-  html += `<a href="https://github.com/${getRepo()}/tree/main/Volume%20Daddy">Training</a>`;
-  html += `<a href="https://github.com/${getRepo()}/tree/main/days">History</a>`;
-  html += `</div>`;
-
-  app.innerHTML = html;
-
-  // Attach click handlers
-  app.querySelectorAll('.item').forEach(el => {
+  $('content').querySelectorAll('.item').forEach(el => {
     el.addEventListener('click', () => toggleItem(el));
   });
 }
 
+function parseTodayMd(md) {
+  const lines = md.split('\n');
+  const sections = [];
+  let current = null, title = '', meta = '', weekTargets = '';
+
+  for (const line of lines) {
+    if (line.startsWith('# ')) { title = line.slice(2); continue; }
+    if (line.startsWith('> ')) { meta = line.slice(2); continue; }
+    if (line.startsWith('**This week:**')) { weekTargets = line.replace(/\*\*/g, ''); continue; }
+    if (line.startsWith('## ')) { current = { title: line.slice(3), items: [] }; sections.push(current); continue; }
+    if (line.startsWith('- [') && current) {
+      const checked = line.charAt(3) === 'x';
+      let text = line.slice(6).replace(/\s*\[↗\]\([^)]+\)/, '').trim();
+      current.items.push({ checked, text });
+    }
+  }
+  return { title, meta, weekTargets, sections };
+}
+
 function splitItem(text) {
-  // "TM meditation (20min)" → { label: "TM meditation", detail: "(20min)" }
-  // "Supplements: Fish Oil · D3..." → { label: "Supplements", detail: "Fish Oil · D3..." }
-  // "_____ *(Bench · ...)*" → { label: "Pick a workout", detail: "Bench · Squat · Press · Hinge · Zone 2 · HIIT" }
   if (text.startsWith('_____')) {
     const inner = text.match(/\*\(([^)]+)\)\*/);
     return { label: 'Workout', detail: inner ? inner[1] : '' };
   }
-  const colonIdx = text.indexOf(': ');
-  if (colonIdx > 0 && colonIdx < 20) {
-    return { label: text.slice(0, colonIdx), detail: text.slice(colonIdx + 2) };
-  }
-  const parenIdx = text.indexOf(' (');
-  if (parenIdx > 0) {
-    return { label: text.slice(0, parenIdx), detail: text.slice(parenIdx + 1) };
-  }
+  const colon = text.indexOf(': ');
+  if (colon > 0 && colon < 20) return { label: text.slice(0, colon), detail: text.slice(colon + 2) };
+  const paren = text.indexOf(' (');
+  if (paren > 0) return { label: text.slice(0, paren), detail: text.slice(paren + 1) };
   return { label: text, detail: '' };
+}
+
+function toggleItem(el) {
+  const section = el.dataset.section;
+  const index = parseInt(el.dataset.index);
+  const isChecked = el.classList.contains('checked');
+  el.classList.toggle('checked');
+
+  const lines = rawMarkdown.split('\n');
+  let found = false, count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('## ') && lines[i].slice(3) === section) { found = true; continue; }
+    if (found && lines[i].startsWith('## ')) break;
+    if (found && lines[i].startsWith('- [')) {
+      if (count === index) {
+        lines[i] = isChecked ? lines[i].replace('- [x]', '- [ ]') : lines[i].replace('- [ ]', '- [x]');
+        break;
+      }
+      count++;
+    }
+  }
+  rawMarkdown = lines.join('\n');
+  scheduleCommit();
+}
+
+// --- File list view ---
+async function loadDir(path, label) {
+  const tabName = label === 'Training' ? 'training' : label === 'History' ? 'history' : 'routines';
+  setHeader(label, tabName !== 'training' && tabName !== 'history' && tabName !== 'routines');
+  setActiveTab(tabName);
+  $('content').innerHTML = '<div class="loading">Loading...</div>';
+
+  const items = await fetchDir(path);
+  let html = '<ul class="file-list">';
+  for (const item of items) {
+    const name = item.name.replace(/\.md$/, '');
+    const icon = item.type === 'dir' ? '&#128193;' : '&#128196;';
+    const route = item.type === 'dir' ? `file/${item.path}` : `file/${item.path}`;
+    html += `<li><a href="#${route}" onclick="event.preventDefault();go('${route}')">`;
+    html += `<span class="icon">${icon}</span>`;
+    html += `<span class="name">${esc(name)}</span>`;
+    html += '<span class="arrow">&#8250;</span>';
+    html += '</a></li>';
+  }
+  html += '</ul>';
+  $('content').innerHTML = html;
+}
+
+async function loadRoutines() {
+  setHeader('Routines', false);
+  setActiveTab('routines');
+  $('content').innerHTML = '<div class="loading">Loading...</div>';
+
+  const files = [
+    { path: 'docs/Daily Routine.md', name: 'Daily Routine', icon: '&#9788;' },
+    { path: 'docs/Supplements.md', name: 'Supplements', icon: '&#128138;' },
+    { path: 'docs/Ethos.md', name: 'Ethos', icon: '&#9733;' },
+    { path: 'docs/Program Archive.md', name: 'Program Archive', icon: '&#128218;' },
+    { path: 'docs/Weekly Architecture.md', name: 'Weekly Architecture', icon: '&#128197;' },
+    { path: 'docs/research', name: 'Research', icon: '&#128300;' },
+    { path: 'docs/health', name: 'Health Records', icon: '&#128154;' },
+  ];
+
+  let html = '<ul class="file-list">';
+  for (const f of files) {
+    const isDir = !f.path.endsWith('.md');
+    const route = isDir ? `file/${f.path}` : `file/${f.path}`;
+    html += `<li><a href="#${route}" onclick="event.preventDefault();go('${route}')">`;
+    html += `<span class="icon">${f.icon}</span>`;
+    html += `<span class="name">${esc(f.name)}</span>`;
+    html += '<span class="arrow">&#8250;</span>';
+    html += '</a></li>';
+  }
+  html += '</ul>';
+  $('content').innerHTML = html;
+}
+
+// --- Markdown file view ---
+async function loadFile(path) {
+  setHeader(path.split('/').pop().replace(/\.md$/, ''), true);
+  setActiveTab('');
+  $('content').innerHTML = '<div class="loading">Loading...</div>';
+
+  // Could be a directory
+  const res = await ghFetch(`contents/${path}`);
+  if (!res.ok) {
+    $('content').innerHTML = '<div class="empty"><p>Not found</p></div>';
+    return;
+  }
+  const data = await res.json();
+
+  // Directory listing
+  if (Array.isArray(data)) {
+    const sorted = data.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    let html = '<ul class="file-list">';
+    for (const item of sorted) {
+      const name = item.name.replace(/\.md$/, '');
+      const icon = item.type === 'dir' ? '&#128193;' : '&#128196;';
+      html += `<li><a href="#file/${item.path}" onclick="event.preventDefault();go('file/${item.path}')">`;
+      html += `<span class="icon">${icon}</span>`;
+      html += `<span class="name">${esc(name)}</span>`;
+      html += '<span class="arrow">&#8250;</span>';
+      html += '</a></li>';
+    }
+    html += '</ul>';
+    $('content').innerHTML = html;
+    return;
+  }
+
+  // File content
+  const content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ''))));
+  const rendered = marked.parse(content, { gfm: true, breaks: true });
+  $('content').innerHTML = `<div class="md-view">${rendered}</div>`;
+
+  // Intercept internal links
+  $('content').querySelectorAll('.md-view a').forEach(a => {
+    const href = a.getAttribute('href');
+    if (href && !href.startsWith('http') && !href.startsWith('#')) {
+      // Resolve relative path
+      const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+      const resolved = resolveRelativePath(dir, decodeURIComponent(href.split('#')[0]));
+      if (resolved) {
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          go('file/' + resolved);
+        });
+      }
+    }
+  });
+}
+
+function resolveRelativePath(base, rel) {
+  if (!rel) return null;
+  const parts = base ? base.split('/') : [];
+  for (const seg of rel.split('/')) {
+    if (seg === '..') parts.pop();
+    else if (seg !== '.' && seg !== '') parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+// --- Settings ---
+function showSettings() { go('settings'); }
+function showSettingsPage() {
+  setHeader('Settings', true);
+  setActiveTab('');
+  $('content').innerHTML = `
+    <div class="setup">
+      <p>Connected to <strong>${REPO}</strong></p>
+      <button onclick="localStorage.removeItem('${TOKEN_KEY}');go('today',false)"
+              style="background:#ef4444;margin-top:12px">
+        Disconnect
+      </button>
+    </div>`;
+}
+
+// --- Setup ---
+function showSetup() {
+  setHeader('Setup', false);
+  setActiveTab('');
+  $('content').innerHTML = `
+    <div class="setup">
+      <h2>dashboard.fitness</h2>
+      <p>Connect to your GitHub repo to sync your daily checklist.</p>
+      <input id="token-input" type="password" placeholder="GitHub personal access token">
+      <br>
+      <button onclick="saveToken()">Connect</button>
+      <p class="hint">
+        Create a <a href="https://github.com/settings/tokens?type=beta">fine-grained token</a>
+        with <strong>Contents: Read and write</strong> access to the dashboard.fitness repo.
+      </p>
+    </div>`;
+}
+
+function saveToken() {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) return;
+  localStorage.setItem(TOKEN_KEY, token);
+  go('today', false);
 }
 
 function esc(s) {
@@ -407,109 +633,18 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function toggleItem(el) {
-  const section = el.dataset.section;
-  const index = parseInt(el.dataset.index);
-  const isChecked = el.classList.contains('checked');
-
-  // Toggle visual state immediately
-  el.classList.toggle('checked');
-
-  // Update raw markdown
-  const lines = rawMarkdown.split('\n');
-  let sectionFound = false;
-  let itemCount = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('## ') && lines[i].slice(3) === section) {
-      sectionFound = true;
-      continue;
-    }
-    if (sectionFound && lines[i].startsWith('## ')) break;  // next section
-    if (sectionFound && lines[i].startsWith('- [')) {
-      if (itemCount === index) {
-        if (isChecked) {
-          lines[i] = lines[i].replace('- [x]', '- [ ]');
-        } else {
-          lines[i] = lines[i].replace('- [ ]', '- [x]');
-        }
-        break;
-      }
-      itemCount++;
-    }
-  }
-
-  rawMarkdown = lines.join('\n');
-  scheduleCommit();
-}
-
-// --- Setup screen ---
-function showSetup() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="setup">
-      <h2>dashboard.fitness</h2>
-      <p>Connect to your GitHub repo to sync your daily checklist.</p>
-      <input id="token-input" type="password" placeholder="GitHub personal access token">
-      <br>
-      <button onclick="saveToken()">Connect</button>
-      <p class="hint">
-        Create a <a href="https://github.com/settings/tokens?type=beta" style="color:var(--accent)">fine-grained token</a>
-        with <strong>Contents: Read and write</strong> access to your dashboard.fitness repo.
-      </p>
-    </div>
-  `;
-}
-
-function saveToken() {
-  const token = document.getElementById('token-input').value.trim();
-  if (!token) return;
-  localStorage.setItem(TOKEN_KEY, token);
-  init();
-}
-
 // --- Init ---
-async function init() {
-  const token = getToken();
-  if (!token) { showSetup(); return; }
-
-  const app = document.getElementById('app');
-  app.innerHTML = '<div class="empty"><p>Loading...</p></div>';
-
-  try {
-    const md = await fetchToday();
-    if (!md) {
-      app.innerHTML = `
-        <div class="empty">
-          <h2>No schedule for today</h2>
-          <p>Run the generator or wait for the daily GitHub Action.</p>
-        </div>`;
-      return;
-    }
-    render(md);
-  } catch (e) {
-    app.innerHTML = `
-      <div class="empty">
-        <h2>Connection error</h2>
-        <p>${esc(e.message)}</p>
-        <button onclick="localStorage.removeItem('${TOKEN_KEY}');init()"
-                style="margin-top:12px;padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer">
-          Reset token
-        </button>
-      </div>`;
-  }
-}
-
-// Refresh if the date changes (left open overnight, or tab refocus next day)
-let loadedDate = today();
+let loadedDate = todayStr();
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && today() !== loadedDate) {
-    loadedDate = today();
-    init();
+  if (!document.hidden && todayStr() !== loadedDate) {
+    loadedDate = todayStr();
+    if (currentRoute === 'today') go('today', false);
   }
 });
 
-init();
+// Route from hash on load
+const hash = window.location.hash.slice(1) || 'today';
+go(hash, false);
 </script>
 </body>
 </html>
