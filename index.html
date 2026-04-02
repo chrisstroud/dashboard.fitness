@@ -75,14 +75,10 @@
     font-size: 1.1rem; font-weight: 600; flex: 1;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .header .settings {
-    color: var(--muted); font-size: 1.2rem; cursor: pointer;
-    padding: 4px; text-decoration: none;
-  }
 
   /* --- Content area --- */
   #content {
-    padding: 16px;
+    padding: 16px 16px 24px;
     max-width: 600px;
     margin: 0 auto;
   }
@@ -239,7 +235,6 @@
 <div class="header">
   <span id="back-btn" class="back" onclick="goBack()">&#8249;</span>
   <span id="header-title" class="title">Today</span>
-  <span class="settings" onclick="showSettings()">&#9881;</span>
 </div>
 
 <div id="content"></div>
@@ -380,7 +375,6 @@ function go(route, pushStack) {
   else if (route === 'routines') loadRoutines();
   else if (route === 'history') loadDir('days', 'History');
   else if (route.startsWith('file/')) loadFile(route.slice(5));
-  else if (route === 'settings') showSettingsPage();
 }
 
 function goBack() {
@@ -665,21 +659,6 @@ function resolveRelativePath(base, rel) {
     else if (seg !== '.' && seg !== '') parts.push(seg);
   }
   return parts.join('/');
-}
-
-// --- Settings ---
-function showSettings() { go('settings'); }
-function showSettingsPage() {
-  setHeader('Settings', true);
-  setActiveTab('');
-  $('content').innerHTML = `
-    <div class="setup">
-      <p>Connected to <strong>${REPO}</strong></p>
-      <button onclick="localStorage.removeItem('${TOKEN_KEY}');go('today',false)"
-              style="background:#ef4444;margin-top:12px">
-        Disconnect
-      </button>
-    </div>`;
 }
 
 // --- Setup ---
