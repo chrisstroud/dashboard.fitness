@@ -126,6 +126,29 @@
   .item-text .label { font-weight: 500; }
   .item-text .detail { color: var(--muted); font-size: 0.8rem; }
 
+  /* --- Workout pills --- */
+  .pills {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 4px 0;
+  }
+  .pill {
+    padding: 8px 14px; border-radius: 20px;
+    border: 1.5px solid var(--border);
+    font-size: 0.85rem; font-weight: 500;
+    color: var(--fg); background: var(--bg);
+    cursor: pointer; transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pill:active { transform: scale(0.96); }
+  .pill.checked {
+    background: var(--check-bg); border-color: #22c55e; color: #22c55e;
+  }
+  .pill.locked {
+    opacity: 0.35; cursor: default;
+    background: var(--check-bg); border-color: #22c55e; color: #22c55e;
+  }
+  .pill .pill-sub { font-size: 0.7rem; color: var(--muted); margin-left: 4px; font-weight: 400; }
+
   /* --- File list view --- */
   .file-list { list-style: none; }
   .file-list li {
@@ -270,7 +293,7 @@
 // --- Config ---
 const REPO = 'chrisstroud/dashboard.fitness';
 const TOKEN_KEY = 'df_gh_token';
-const APP_VERSION = '3';
+const APP_VERSION = '4';
 
 // --- Auto-update: check if a newer version is deployed ---
 (async function checkForUpdate() {
@@ -429,20 +452,54 @@ function renderToday(md) {
   html += `<h1>${esc(title)}</h1>`;
 
   for (const section of sections) {
+    const isWorkout = section.title === 'Workout';
     html += '<div class="section">';
     html += `<div class="section-title">${esc(section.title)}</div>`;
-    for (let i = 0; i < section.items.length; i++) {
-      const item = section.items[i];
-      const cls = item.checked ? ' checked' : '';
-      // Pre-checked from earlier in the week = locked (not tappable today)
-      const locked = item.checked && item.priorDay;
-      const lockCls = locked ? ' locked' : '';
-      const parts = splitItem(item.text);
-      html += `<div class="item${cls}${lockCls}" data-section="${esc(section.title)}" data-index="${i}">`;
-      html += '<div class="checkbox"></div><div class="item-text">';
-      html += `<span class="label">${esc(parts.label)}</span>`;
-      if (parts.detail) html += ` <span class="detail">${esc(parts.detail)}</span>`;
-      html += '</div></div>';
+
+    if (isWorkout) {
+      // Render workouts as compact pills, non-workouts (Dog walk) as regular items
+      const workouts = section.items.filter(i => !i.text.startsWith('Dog walk'));
+      const other = section.items.filter(i => i.text.startsWith('Dog walk'));
+
+      html += '<div class="pills">';
+      for (let i = 0; i < section.items.length; i++) {
+        const item = section.items[i];
+        if (item.text.startsWith('Dog walk')) continue;
+        const locked = item.checked && item.priorDay;
+        const cls = locked ? 'locked' : item.checked ? 'checked' : '';
+        const label = item.text.split(' (')[0]; // "Bench Day"
+        const sub = item.priorDay ? item.priorDay : '';
+        html += `<span class="pill ${cls}" data-section="Workout" data-index="${i}">`;
+        html += esc(label);
+        if (sub) html += `<span class="pill-sub">${esc(sub)}</span>`;
+        html += '</span>';
+      }
+      html += '</div>';
+
+      // Render non-workout items (Dog walk) as regular items
+      for (let i = 0; i < section.items.length; i++) {
+        const item = section.items[i];
+        if (!item.text.startsWith('Dog walk')) continue;
+        const cls = item.checked ? ' checked' : '';
+        html += `<div class="item${cls}" data-section="Workout" data-index="${i}">`;
+        html += '<div class="checkbox"></div><div class="item-text">';
+        html += `<span class="label">${esc(item.text)}</span>`;
+        html += '</div></div>';
+      }
+    } else {
+      // Regular section rendering
+      for (let i = 0; i < section.items.length; i++) {
+        const item = section.items[i];
+        const cls = item.checked ? ' checked' : '';
+        const locked = item.checked && item.priorDay;
+        const lockCls = locked ? ' locked' : '';
+        const parts = splitItem(item.text);
+        html += `<div class="item${cls}${lockCls}" data-section="${esc(section.title)}" data-index="${i}">`;
+        html += '<div class="checkbox"></div><div class="item-text">';
+        html += `<span class="label">${esc(parts.label)}</span>`;
+        if (parts.detail) html += ` <span class="detail">${esc(parts.detail)}</span>`;
+        html += '</div></div>';
+      }
     }
     html += '</div>';
   }
@@ -452,9 +509,35 @@ function renderToday(md) {
   html += '</div>';
   $('content').innerHTML = html;
 
-  // Attach click handlers (skip locked items)
+  // Attach click handlers to regular items (skip locked)
   $('content').querySelectorAll('.item:not(.locked)').forEach(el => {
     el.addEventListener('click', () => toggleItem(el));
+  });
+
+  // Attach click handlers to pills (skip locked)
+  $('content').querySelectorAll('.pill:not(.locked)').forEach(el => {
+    el.addEventListener('click', () => {
+      const section = el.dataset.section;
+      const index = parseInt(el.dataset.index);
+      const isChecked = el.classList.contains('checked');
+      el.classList.toggle('checked');
+
+      const lines = rawMarkdown.split('\n');
+      let found = false, count = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('## ') && lines[i].slice(3) === section) { found = true; continue; }
+        if (found && lines[i].startsWith('## ')) break;
+        if (found && lines[i].startsWith('- [')) {
+          if (count === index) {
+            lines[i] = isChecked ? lines[i].replace('- [x]', '- [ ]') : lines[i].replace('- [ ]', '- [x]');
+            break;
+          }
+          count++;
+        }
+      }
+      rawMarkdown = lines.join('\n');
+      scheduleCommit();
+    });
   });
 }
 
@@ -611,22 +694,23 @@ async function loadWeek() {
   }
   html += '</div>';
 
-  // Cardio
-  const totalCardio = cardioCounts['Zone 2'] + cardioCounts['HIIT'];
+  // Cardio — 4x Zone 2 + 1x HIIT as individual items
+  const z2Done = cardioCounts['Zone 2'];
+  const hiitDone = cardioCounts['HIIT'];
+  const totalCardio = z2Done + hiitDone;
   html += '<div class="section"><div class="section-title">Cardio — ' + totalCardio + '/5</div>';
 
-  // Zone 2: show count out of 4
-  const z2Done = cardioCounts['Zone 2'];
-  html += `<div class="item${z2Done > 0 ? ' checked' : ''}" style="cursor:default">`;
-  html += '<div class="checkbox"></div>';
-  html += `<div class="item-text"><span class="label">Zone 2</span> <span class="detail">${z2Done}/4 sessions</span></div>`;
-  html += '</div>';
+  for (let i = 0; i < 4; i++) {
+    const done = i < z2Done;
+    html += `<div class="item${done ? ' checked' : ''}" style="cursor:default">`;
+    html += '<div class="checkbox"></div>';
+    html += `<div class="item-text"><span class="label">Zone 2</span> <span class="detail">50 min</span></div>`;
+    html += '</div>';
+  }
 
-  // HIIT: 1x per week
-  const hiitDone = cardioCounts['HIIT'] > 0;
-  html += `<div class="item${hiitDone ? ' checked' : ''}" style="cursor:default">`;
+  html += `<div class="item${hiitDone > 0 ? ' checked' : ''}" style="cursor:default">`;
   html += '<div class="checkbox"></div>';
-  html += `<div class="item-text"><span class="label">HIIT</span> <span class="detail">${hiitDone ? 'Done' : '0/1'}</span></div>`;
+  html += `<div class="item-text"><span class="label">HIIT</span> <span class="detail">45 min</span></div>`;
   html += '</div>';
 
   html += '</div></div>';
