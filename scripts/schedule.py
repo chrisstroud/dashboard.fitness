@@ -441,11 +441,14 @@ def generate_day(items: list[ActionItem], d: date, spine: dict) -> str:
         else:
             lines.append(f"- [ ] {w['name']} ({w['duration']})")
 
-    # Cardio
-    z2_label = f" — {zone2_done_count}/4 this week" if zone2_done_count > 0 else ""
-    lines.append(f"- [ ] Zone 2 (50min){z2_label}")
+    # Cardio — 4x Zone 2 + 1x HIIT
+    for i in range(4):
+        if i < zone2_done_count:
+            lines.append("- [x] Zone 2 (50min)")
+        else:
+            lines.append("- [ ] Zone 2 (50min)")
     if hiit_done:
-        lines.append("- [x] HIIT (45min) — done this week")
+        lines.append("- [x] HIIT (45min)")
     else:
         lines.append("- [ ] HIIT (45min)")
 
