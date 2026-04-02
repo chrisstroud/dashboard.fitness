@@ -129,20 +129,22 @@
     text-decoration: none;
     font-size: 0.8rem;
   }
-  .sync-dot {
+  .sync-bar {
     position: fixed;
-    top: 12px;
-    right: 12px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #22c55e;
-    opacity: 0;
-    transition: opacity 0.3s;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    text-align: center;
+    z-index: 100;
+    transform: translateY(-100%);
+    transition: transform 0.3s;
   }
-  .sync-dot.saving { background: #f59e0b; opacity: 1; }
-  .sync-dot.saved { background: #22c55e; opacity: 1; }
-  .sync-dot.error { background: #ef4444; opacity: 1; }
+  .sync-bar.visible { transform: translateY(0); }
+  .sync-bar.saving { background: #f59e0b; color: #000; }
+  .sync-bar.saved { background: #22c55e; color: #000; }
+  .sync-bar.error { background: #ef4444; color: #fff; }
 
   /* Setup screen */
   .setup {
@@ -188,7 +190,7 @@
 </style>
 </head>
 <body>
-<div id="sync-dot" class="sync-dot"></div>
+<div id="sync-bar" class="sync-bar"></div>
 <div id="app"></div>
 
 <script>
@@ -213,10 +215,11 @@ function today() {
 function getToken() { return localStorage.getItem(TOKEN_KEY); }
 function getRepo() { return localStorage.getItem(REPO_KEY) || REPO; }
 
-function syncStatus(state) {
-  const dot = document.getElementById('sync-dot');
-  dot.className = 'sync-dot ' + state;
-  if (state === 'saved') setTimeout(() => dot.className = 'sync-dot', 1500);
+function syncStatus(state, msg) {
+  const bar = document.getElementById('sync-bar');
+  bar.className = 'sync-bar visible ' + state;
+  bar.textContent = msg || { saving: 'Saving...', saved: 'Saved', error: 'Sync failed' }[state];
+  if (state === 'saved') setTimeout(() => bar.className = 'sync-bar', 1500);
 }
 
 // --- GitHub API ---
@@ -252,26 +255,32 @@ async function commitFile(content) {
   const path = `contents/days/${today()}.md`;
   // Encode as base64 (handle UTF-8)
   const encoded = btoa(unescape(encodeURIComponent(content)));
-  const res = await ghFetch(path, {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: `check: ${today()}`,
-      content: encoded,
-      sha: fileSha,
-    }),
-  });
-  if (!res.ok) {
-    syncStatus('error');
-    // SHA conflict — re-fetch and retry
-    if (res.status === 409) {
-      await fetchToday();
-      render(rawMarkdown);
+  try {
+    const res = await ghFetch(path, {
+      method: 'PUT',
+      body: JSON.stringify({
+        message: `check: ${today()}`,
+        content: encoded,
+        sha: fileSha,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const msg = body.message || `HTTP ${res.status}`;
+      syncStatus('error', `Sync failed: ${msg}`);
+      // SHA conflict — re-fetch and retry
+      if (res.status === 409 || res.status === 422) {
+        await fetchToday();
+        render(rawMarkdown);
+      }
+      return;
     }
-    return;
+    const data = await res.json();
+    fileSha = data.content.sha;
+    syncStatus('saved');
+  } catch (e) {
+    syncStatus('error', `Sync failed: ${e.message}`);
   }
-  const data = await res.json();
-  fileSha = data.content.sha;
-  syncStatus('saved');
 }
 
 function scheduleCommit() {
