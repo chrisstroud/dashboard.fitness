@@ -1,4 +1,6 @@
-# docs — Claude Code Reference
+> **Product planning docs:** See [docs/product/CLAUDE.md](product/CLAUDE.md)
+
+# docs -- Claude Code Reference
 
 Reference material for dashboard.fitness. Not daily-use — these are the documents behind the workouts.
 
