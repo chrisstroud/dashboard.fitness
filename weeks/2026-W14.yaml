@@ -6,6 +6,8 @@ strength:
   - day: '2026-04-02'
     workout: Bench Day
   - day: '2026-04-02'
+    workout: Press Day
+  - day: '2026-04-02'
     workout: Hinge Day
 cardio:
   target: 5
