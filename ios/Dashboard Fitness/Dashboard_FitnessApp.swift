@@ -15,6 +15,8 @@ struct Dashboard_FitnessApp: App {
             ProtocolGroup.self,
             UserProtocol.self,
             ProtocolCompletion.self,
+            DailyInstance.self,
+            DailyTask.self,
             DocFolder.self,
             UserDocument.self,
         ])

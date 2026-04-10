@@ -18,8 +18,9 @@ from api.models.session import (  # noqa: E402, F401
 )
 from api.models.metric import BodyWeight  # noqa: E402, F401
 from api.models.protocol import (  # noqa: E402, F401
+    DailyInstance,
+    DailyTask,
     Protocol,
-    ProtocolCompletion,
     ProtocolGroup,
 )
 from api.models.document import Document, Folder  # noqa: E402, F401

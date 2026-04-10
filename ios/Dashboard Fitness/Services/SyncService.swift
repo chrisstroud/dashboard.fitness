@@ -27,8 +27,83 @@ final class SyncService {
         await syncFolders(modelContext: modelContext)
         await syncDocuments(modelContext: modelContext)
         await syncProtocols(modelContext: modelContext)
+        await syncTodayInstance(modelContext: modelContext)
 
         isSyncing = false
+    }
+
+    // MARK: - Daily Instance
+
+    private func syncTodayInstance(modelContext: ModelContext) async {
+        do {
+            let url = baseURL.appendingPathComponent("protocols/today")
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+
+            let apiInstance = try decoder.decode(APIDailyInstance.self, from: data)
+            guard let instanceId = UUID(uuidString: apiInstance.id) else { return }
+
+            // Check if we already have this instance
+            let existing = try modelContext.fetch(FetchDescriptor<DailyInstance>())
+            let existingInstance = existing.first { $0.id == instanceId }
+
+            let instance: DailyInstance
+            if let existingInstance {
+                instance = existingInstance
+            } else {
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.timeZone = .current
+                let date = dateFormatter.date(from: apiInstance.date) ?? Calendar.current.startOfDay(for: Date())
+                instance = DailyInstance(date: date)
+                instance.id = instanceId
+                modelContext.insert(instance)
+            }
+
+            // Sync tasks
+            let existingTaskIds = Set(instance.tasks.map(\.id))
+            var seenTaskIds = Set<UUID>()
+
+            let allTasks = (apiInstance.morning + apiInstance.evening + apiInstance.anytime)
+                .flatMap { group in
+                    group.tasks.map { (group, $0) }
+                }
+
+            for (group, apiTask) in allTasks {
+                guard let taskId = UUID(uuidString: apiTask.id) else { continue }
+                seenTaskIds.insert(taskId)
+
+                if let existingTask = instance.tasks.first(where: { $0.id == taskId }) {
+                    existingTask.status = apiTask.status
+                    existingTask.completedAt = nil  // TODO: parse from API
+                } else {
+                    let task = DailyTask(
+                        groupName: group.groupName,
+                        section: group.section,
+                        groupPosition: group.groupPosition,
+                        label: apiTask.label,
+                        position: apiTask.position
+                    )
+                    task.id = taskId
+                    task.subtitle = apiTask.subtitle
+                    task.scheduledTime = apiTask.scheduledTime
+                    task.status = apiTask.status
+                    task.sourceProtocolId = apiTask.sourceProtocolId
+                    if let docId = apiTask.documentId { task.documentId = UUID(uuidString: docId) }
+                    task.instance = instance
+                    modelContext.insert(task)
+                }
+            }
+
+            // Remove tasks no longer in API
+            for task in instance.tasks where !seenTaskIds.contains(task.id) {
+                modelContext.delete(task)
+            }
+
+            try modelContext.save()
+        } catch {
+            lastError = (lastError ?? "") + " " + error.localizedDescription
+        }
     }
 
     // MARK: - Folders
@@ -246,4 +321,30 @@ private struct APIDocumentFull: Decodable {
     let title: String
     let content: String
     let folderId: String?
+}
+
+private struct APIDailyInstance: Decodable {
+    let id: String
+    let date: String
+    let morning: [APIDailyGroup]
+    let evening: [APIDailyGroup]
+    let anytime: [APIDailyGroup]
+}
+
+private struct APIDailyGroup: Decodable {
+    let groupName: String
+    let section: String
+    let groupPosition: Int
+    let tasks: [APIDailyTask]
+}
+
+private struct APIDailyTask: Decodable {
+    let id: String
+    let sourceProtocolId: String?
+    let label: String
+    let subtitle: String?
+    let position: Int
+    let scheduledTime: String?
+    let documentId: String?
+    let status: String
 }

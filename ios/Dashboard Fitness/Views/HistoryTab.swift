@@ -2,125 +2,242 @@ import SwiftUI
 import SwiftData
 
 struct HistoryTab: View {
-    @Query(sort: \ProtocolCompletion.date, order: .reverse) private var allCompletions: [ProtocolCompletion]
-    @Query(sort: \WorkoutSession.date, order: .reverse) private var allSessions: [WorkoutSession]
-
-    private var activeDates: [Date] {
-        let calendar = Calendar.current
-        var dates = Set<Date>()
-        for c in allCompletions { dates.insert(calendar.startOfDay(for: c.date)) }
-        for s in allSessions { dates.insert(calendar.startOfDay(for: s.date)) }
-        return dates.sorted(by: >)
-    }
+    @Query(sort: \DailyInstance.date, order: .reverse) private var instances: [DailyInstance]
+    @State private var selectedDate: Date?
+    @State private var displayedMonth = Date()
 
     var body: some View {
         NavigationStack {
-            Group {
-                if activeDates.isEmpty {
-                    ContentUnavailableView(
-                        "No History",
-                        systemImage: "calendar",
-                        description: Text("Complete tasks on the Today tab to build your history")
-                    )
-                } else {
-                    List(activeDates, id: \.self) { date in
-                        NavigationLink(value: date) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(date, format: .dateTime.weekday(.wide).month().day())
-                                        .font(.body.bold())
-                                    Text(daySummary(for: date))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Month navigation
+                    HStack {
+                        Button(action: previousMonth) {
+                            Image(systemName: "chevron.left")
+                        }
+                        Spacer()
+                        Text(displayedMonth, format: .dateTime.month(.wide).year())
+                            .font(.headline)
+                        Spacer()
+                        Button(action: nextMonth) {
+                            Image(systemName: "chevron.right")
                         }
                     }
-                    .navigationDestination(for: Date.self) { date in
-                        DayDetailView(date: date)
+                    .padding(.horizontal)
+
+                    // Calendar grid
+                    CalendarGrid(
+                        month: displayedMonth,
+                        instances: instances,
+                        selectedDate: $selectedDate
+                    )
+                    .padding(.horizontal)
+
+                    // Legend
+                    HStack(spacing: 16) {
+                        LegendItem(color: .gray.opacity(0.15), label: "No data")
+                        LegendItem(color: .green.opacity(0.3), label: "< 50%")
+                        LegendItem(color: .green.opacity(0.6), label: "50-80%")
+                        LegendItem(color: .green, label: "> 80%")
+                    }
+                    .font(.caption2)
+                    .padding(.horizontal)
+
+                    // Selected day detail
+                    if let date = selectedDate, let instance = instanceFor(date) {
+                        DayDetailCard(instance: instance)
+                            .padding(.horizontal)
                     }
                 }
+                .padding(.vertical)
             }
             .navigationTitle("History")
         }
     }
 
-    private func daySummary(for date: Date) -> String {
+    private func instanceFor(_ date: Date) -> DailyInstance? {
         let calendar = Calendar.current
-        let completed = allCompletions.filter { calendar.isDate($0.date, inSameDayAs: date) && $0.status == "completed" }.count
-        let skipped = allCompletions.filter { calendar.isDate($0.date, inSameDayAs: date) && $0.status == "skipped" }.count
-        let sessions = allSessions.filter { calendar.isDate($0.date, inSameDayAs: date) }.count
+        return instances.first { calendar.isDate($0.date, inSameDayAs: date) }
+    }
 
-        var parts: [String] = []
-        if completed > 0 { parts.append("\(completed) done") }
-        if skipped > 0 { parts.append("\(skipped) skipped") }
-        if sessions > 0 { parts.append("\(sessions) workout\(sessions == 1 ? "" : "s")") }
-        return parts.joined(separator: " · ")
+    private func previousMonth() {
+        displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+    }
+
+    private func nextMonth() {
+        displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
     }
 }
 
-struct DayDetailView: View {
-    let date: Date
-    @Query private var allCompletions: [ProtocolCompletion]
-    @Query private var allSessions: [WorkoutSession]
+// MARK: - Calendar Grid
 
-    private var dayCompletions: [ProtocolCompletion] {
-        let calendar = Calendar.current
-        return allCompletions.filter { calendar.isDate($0.date, inSameDayAs: date) }
-    }
+struct CalendarGrid: View {
+    let month: Date
+    let instances: [DailyInstance]
+    @Binding var selectedDate: Date?
 
-    private var daySessions: [WorkoutSession] {
-        let calendar = Calendar.current
-        return allSessions.filter { calendar.isDate($0.date, inSameDayAs: date) }
+    private let calendar = Calendar.current
+    private let dayNames = ["S", "M", "T", "W", "T", "F", "S"]
+
+    private var daysInMonth: [Date?] {
+        guard let range = calendar.range(of: .day, in: .month, for: month),
+              let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: month)) else {
+            return []
+        }
+
+        let weekdayOfFirst = calendar.component(.weekday, from: firstDay) - 1
+        var days: [Date?] = Array(repeating: nil, count: weekdayOfFirst)
+
+        for day in range {
+            if let date = calendar.date(byAdding: .day, value: day - 1, to: firstDay) {
+                days.append(date)
+            }
+        }
+
+        return days
     }
 
     var body: some View {
-        List {
-            if !dayCompletions.isEmpty {
-                Section("Tasks") {
-                    ForEach(dayCompletions) { completion in
-                        HStack(spacing: 10) {
-                            Image(systemName: completion.status == "completed" ? "checkmark.circle.fill" : "minus.circle.fill")
-                                .foregroundStyle(completion.status == "completed" ? .green : .orange)
-                            VStack(alignment: .leading) {
-                                Text(completion.protocol?.label ?? "Unknown")
-                                if let groupName = completion.protocol?.group?.name {
-                                    Text(groupName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Text(completion.status.capitalized)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+        VStack(spacing: 4) {
+            // Day headers
+            HStack(spacing: 0) {
+                ForEach(dayNames, id: \.self) { name in
+                    Text(name)
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
             }
 
-            if !daySessions.isEmpty {
-                Section("Workouts") {
-                    ForEach(daySessions) { session in
-                        HStack {
-                            Text(session.template?.name ?? "Workout")
-                            Spacer()
-                            if let duration = session.durationMinutes {
-                                Text("\(duration) min")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            // Day cells
+            let columns = 7
+            let rows = (daysInMonth.count + columns - 1) / columns
+
+            ForEach(0..<rows, id: \.self) { row in
+                HStack(spacing: 0) {
+                    ForEach(0..<columns, id: \.self) { col in
+                        let index = row * columns + col
+                        if index < daysInMonth.count, let date = daysInMonth[index] {
+                            DayCell(
+                                date: date,
+                                completionRate: completionRate(for: date),
+                                isSelected: isSelected(date),
+                                isToday: calendar.isDateInToday(date)
+                            )
+                            .onTapGesture { selectedDate = date }
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity, minHeight: 36)
                         }
                     }
                 }
             }
         }
-        .navigationTitle(date.formatted(.dateTime.weekday(.wide).month().day()))
+    }
+
+    private func completionRate(for date: Date) -> Double? {
+        guard let instance = instances.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) else {
+            return nil
+        }
+        return instance.completionRate
+    }
+
+    private func isSelected(_ date: Date) -> Bool {
+        guard let selected = selectedDate else { return false }
+        return calendar.isDate(date, inSameDayAs: selected)
+    }
+}
+
+struct DayCell: View {
+    let date: Date
+    let completionRate: Double?
+    let isSelected: Bool
+    let isToday: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(cellColor)
+
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.blue, lineWidth: 2)
+            }
+
+            Text("\(Calendar.current.component(.day, from: date))")
+                .font(.caption)
+                .fontWeight(isToday ? .bold : .regular)
+                .foregroundStyle(isToday ? .blue : .primary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 36)
+    }
+
+    private var cellColor: Color {
+        guard let rate = completionRate else {
+            return Color.gray.opacity(0.08)
+        }
+        if rate == 0 { return Color.gray.opacity(0.15) }
+        if rate < 0.5 { return Color.green.opacity(0.3) }
+        if rate < 0.8 { return Color.green.opacity(0.6) }
+        return Color.green.opacity(0.85)
+    }
+}
+
+struct LegendItem: View {
+    let color: Color
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: 12, height: 12)
+            Text(label)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Day Detail Card
+
+struct DayDetailCard: View {
+    let instance: DailyInstance
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(instance.date, format: .dateTime.weekday(.wide).month().day())
+                    .font(.headline)
+                Spacer()
+                Text("\(instance.completedTasks)/\(instance.totalTasks)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if instance.totalTasks > 0 {
+                ProgressView(value: instance.completionRate)
+                    .tint(.green)
+            }
+
+            let sections = instance.tasksBySection()
+            let allGroups = sections.morning + sections.evening + sections.anytime
+
+            ForEach(allGroups) { group in
+                HStack(spacing: 8) {
+                    Text(group.name)
+                        .font(.caption)
+                    Spacer()
+                    Text("\(group.completedCount)/\(group.tasks.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
 #Preview {
     HistoryTab()
-        .modelContainer(for: [ProtocolCompletion.self, WorkoutSession.self], inMemory: true)
+        .modelContainer(for: DailyInstance.self, inMemory: true)
 }

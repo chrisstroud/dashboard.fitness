@@ -13,6 +13,7 @@ class User(db.Model):
     apple_user_id: str = db.Column(db.String(255), unique=True, nullable=True)
     email: str = db.Column(db.String(255), unique=True, nullable=True)
     display_name: str = db.Column(db.String(100), nullable=True)
+    timezone: str = db.Column(db.String(50), nullable=False, default="America/Los_Angeles")
     created_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

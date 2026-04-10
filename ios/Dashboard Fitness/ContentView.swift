@@ -13,6 +13,9 @@ struct ContentView: View {
             Tab("History", systemImage: "calendar") {
                 HistoryTab()
             }
+            Tab("Settings", systemImage: "gear") {
+                SettingsTab()
+            }
         }
     }
 }
@@ -20,10 +23,9 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: [
+            DailyInstance.self,
             ProtocolGroup.self,
-            WorkoutSession.self,
-            WorkoutTemplate.self,
-            BodyWeight.self,
+            DocFolder.self,
             UserDocument.self,
         ], inMemory: true)
 }

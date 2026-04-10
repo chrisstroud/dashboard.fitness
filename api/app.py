@@ -25,6 +25,7 @@ def create_app(config_class: type = Config) -> Flask:
     from api.routes.metrics import metrics_bp
     from api.routes.protocols import protocols_bp
     from api.routes.documents import documents_bp
+    from api.routes.users import users_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(workouts_bp, url_prefix="/api/workouts")
@@ -32,5 +33,6 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(metrics_bp, url_prefix="/api/metrics")
     app.register_blueprint(protocols_bp, url_prefix="/api/protocols")
     app.register_blueprint(documents_bp, url_prefix="/api/documents")
+    app.register_blueprint(users_bp, url_prefix="/api/users")
 
     return app

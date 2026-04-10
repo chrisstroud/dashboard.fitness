@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 
 from api.models import db
 
 
 class ProtocolGroup(db.Model):
-    """A named group of protocols within a day section (e.g. 'Bathroom', 'Supplements')."""
+    """Master template: a named group of protocols (e.g. 'Bathroom', 'Supplements')."""
 
     __tablename__ = "protocol_groups"
 
@@ -28,7 +28,7 @@ class ProtocolGroup(db.Model):
 
 
 class Protocol(db.Model):
-    """The atomic unit: a single habit/task (e.g. 'Take Boron 10mg')."""
+    """Master template: atomic habit/task (e.g. 'Take Boron 10mg')."""
 
     __tablename__ = "protocols"
 
@@ -37,6 +37,7 @@ class Protocol(db.Model):
     label: str = db.Column(db.String(200), nullable=False)
     subtitle: str = db.Column(db.String(500), nullable=True)
     position: int = db.Column(db.Integer, nullable=False, default=0)
+    scheduled_time: time = db.Column(db.Time, nullable=True)  # optional: when to do this
     document_id: str = db.Column(db.String(36), db.ForeignKey("documents.id"), nullable=True)
     created_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -46,22 +47,49 @@ class Protocol(db.Model):
     document = db.relationship("Document")
 
 
-class ProtocolCompletion(db.Model):
-    """Tracks completion/skip of a protocol on a specific date."""
+# ── Daily Instance (snapshot of master for a specific date) ──────────
 
-    __tablename__ = "protocol_completions"
+
+class DailyInstance(db.Model):
+    """A day's snapshot: created from the master template each day."""
+
+    __tablename__ = "daily_instances"
 
     id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: str = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    protocol_id: str = db.Column(db.String(36), db.ForeignKey("protocols.id"), nullable=False)
     date: date = db.Column(db.Date, nullable=False)
-    status: str = db.Column(db.String(20), nullable=False, default="completed")  # completed, skipped
-    completed_at: datetime = db.Column(
+    created_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    protocol = db.relationship("Protocol")
+    tasks = db.relationship(
+        "DailyTask", back_populates="instance", cascade="all, delete-orphan",
+        order_by="DailyTask.position",
+    )
+    user = db.relationship("User", backref="daily_instances")
 
     __table_args__ = (
-        db.UniqueConstraint("user_id", "protocol_id", "date", name="uq_completion_per_day"),
+        db.UniqueConstraint("user_id", "date", name="uq_daily_instance_per_day"),
     )
+
+
+class DailyTask(db.Model):
+    """A task within a daily instance — frozen snapshot of a protocol."""
+
+    __tablename__ = "daily_tasks"
+
+    id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    instance_id: str = db.Column(db.String(36), db.ForeignKey("daily_instances.id"), nullable=False)
+    source_protocol_id: str = db.Column(db.String(36), nullable=True)  # which master protocol this came from
+    group_name: str = db.Column(db.String(100), nullable=False)
+    section: str = db.Column(db.String(20), nullable=False, default="anytime")
+    group_position: int = db.Column(db.Integer, nullable=False, default=0)
+    label: str = db.Column(db.String(200), nullable=False)
+    subtitle: str = db.Column(db.String(500), nullable=True)
+    position: int = db.Column(db.Integer, nullable=False, default=0)
+    scheduled_time: time = db.Column(db.Time, nullable=True)
+    document_id: str = db.Column(db.String(36), nullable=True)
+    status: str = db.Column(db.String(20), nullable=False, default="pending")  # pending, completed, skipped
+    completed_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    instance = db.relationship("DailyInstance", back_populates="tasks")
