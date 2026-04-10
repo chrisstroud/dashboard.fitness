@@ -68,6 +68,7 @@ struct MasterTemplateEditor: View {
                 }
             }
         }
+        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
         .alert("New Section", isPresented: $showingNewSection) {
             TextField("Section name", text: $newSectionName)
             Button("Create") {
@@ -177,6 +178,7 @@ struct GroupEditor: View {
                 EditButton()
             }
         }
+        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
         .alert("New Protocol", isPresented: $showingNewProtocol) {
             TextField("Label", text: $newLabel)
             TextField("Subtitle (optional)", text: $newSubtitle)
@@ -197,6 +199,7 @@ struct GroupEditor: View {
 struct ProtocolEditor: View {
     @Bindable var proto: UserProtocol
     @Query(sort: \UserDocument.title) private var allDocs: [UserDocument]
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedDocId: UUID?
 
     var body: some View {
@@ -233,6 +236,7 @@ struct ProtocolEditor: View {
         .navigationTitle(proto.label)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectedDocId = proto.documentId }
+        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
     }
 }
 
