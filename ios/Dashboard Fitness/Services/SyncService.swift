@@ -20,23 +20,74 @@ final class SyncService {
         return d
     }()
 
-    func syncProtocols(modelContext: ModelContext) async {
+    func syncAll(modelContext: ModelContext) async {
         isSyncing = true
         lastError = nil
 
+        await syncDocuments(modelContext: modelContext)
+        await syncProtocols(modelContext: modelContext)
+
+        isSyncing = false
+    }
+
+    // MARK: - Documents
+
+    private func syncDocuments(modelContext: ModelContext) async {
+        do {
+            let url = baseURL.appendingPathComponent("documents")
+            let (listData, listResponse) = try await URLSession.shared.data(from: url)
+            guard let http = listResponse as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+
+            let apiDocList = try decoder.decode([APIDocumentSummary].self, from: listData)
+
+            let existing = try modelContext.fetch(FetchDescriptor<UserDocument>())
+            let existingById = Dictionary(uniqueKeysWithValues: existing.compactMap { d in
+                UUID(uuidString: d.id.uuidString).map { ($0, d) }
+            })
+
+            var seenIds = Set<UUID>()
+
+            for apiDoc in apiDocList {
+                guard let docId = UUID(uuidString: apiDoc.id) else { continue }
+                seenIds.insert(docId)
+
+                // Fetch full doc content
+                let detailURL = baseURL.appendingPathComponent("documents/\(apiDoc.id)")
+                let (detailData, _) = try await URLSession.shared.data(from: detailURL)
+                let fullDoc = try decoder.decode(APIDocumentFull.self, from: detailData)
+
+                if let existingDoc = existingById[docId] {
+                    existingDoc.title = fullDoc.title
+                    existingDoc.content = fullDoc.content
+                    existingDoc.category = fullDoc.category
+                } else {
+                    let newDoc = UserDocument(title: fullDoc.title, content: fullDoc.content, category: fullDoc.category)
+                    newDoc.id = docId
+                    modelContext.insert(newDoc)
+                }
+            }
+
+            for (id, doc) in existingById where !seenIds.contains(id) {
+                modelContext.delete(doc)
+            }
+
+            try modelContext.save()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Protocols
+
+    private func syncProtocols(modelContext: ModelContext) async {
         do {
             let url = baseURL.appendingPathComponent("protocols")
             let (data, response) = try await URLSession.shared.data(from: url)
 
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                lastError = "Server error"
-                isSyncing = false
-                return
-            }
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
             let apiGroups = try decoder.decode([APIProtocolGroup].self, from: data)
 
-            // Fetch existing groups
             let existingGroups = try modelContext.fetch(FetchDescriptor<ProtocolGroup>())
             let existingById = Dictionary(uniqueKeysWithValues: existingGroups.compactMap { g in
                 UUID(uuidString: g.id.uuidString).map { ($0, g) }
@@ -69,17 +120,14 @@ final class SyncService {
                 }
             }
 
-            // Delete groups not in API
             for (id, group) in existingById where !seenGroupIds.contains(id) {
                 modelContext.delete(group)
             }
 
             try modelContext.save()
         } catch {
-            lastError = error.localizedDescription
+            lastError = (lastError ?? "") + " " + error.localizedDescription
         }
-
-        isSyncing = false
     }
 
     private func syncProtocolsInGroup(apiProtocols: [APIProtocol], into group: ProtocolGroup, modelContext: ModelContext) {
@@ -129,4 +177,17 @@ private struct APIProtocol: Decodable {
     let subtitle: String?
     let position: Int
     let documentId: String?
+}
+
+private struct APIDocumentSummary: Decodable {
+    let id: String
+    let title: String
+    let category: String?
+}
+
+private struct APIDocumentFull: Decodable {
+    let id: String
+    let title: String
+    let content: String
+    let category: String?
 }

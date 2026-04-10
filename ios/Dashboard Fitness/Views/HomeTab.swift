@@ -71,6 +71,40 @@ struct HomeTab: View {
                 }
                 .padding(.vertical)
             }
+            .navigationDestination(for: UUID.self) { docId in
+                LinkedDocView(documentId: docId)
+            }
+        }
+    }
+}
+
+// MARK: - Linked Document View (lookup by ID)
+
+struct LinkedDocView: View {
+    let documentId: UUID
+    @Query private var allDocs: [UserDocument]
+
+    private var document: UserDocument? {
+        allDocs.first { $0.id == documentId }
+    }
+
+    var body: some View {
+        if let doc = document {
+            ScrollView {
+                Text(doc.content.isEmpty ? "No content yet." : doc.content)
+                    .font(.body)
+                    .foregroundStyle(doc.content.isEmpty ? .secondary : .primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle(doc.title)
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            ContentUnavailableView(
+                "Document Not Found",
+                systemImage: "doc.questionmark",
+                description: Text("This document may not have synced yet")
+            )
         }
     }
 }

@@ -31,7 +31,7 @@ struct Dashboard_FitnessApp: App {
             ContentView()
                 .task {
                     let context = sharedModelContainer.mainContext
-                    await SyncService.shared.syncProtocols(modelContext: context)
+                    await SyncService.shared.syncAll(modelContext: context)
                 }
         }
         .modelContainer(sharedModelContainer)
