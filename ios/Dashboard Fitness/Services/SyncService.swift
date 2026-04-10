@@ -24,10 +24,52 @@ final class SyncService {
         isSyncing = true
         lastError = nil
 
+        await syncFolders(modelContext: modelContext)
         await syncDocuments(modelContext: modelContext)
         await syncProtocols(modelContext: modelContext)
 
         isSyncing = false
+    }
+
+    // MARK: - Folders
+
+    private func syncFolders(modelContext: ModelContext) async {
+        do {
+            let url = baseURL.appendingPathComponent("documents/folders")
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+
+            let apiFolders = try decoder.decode([APIFolder].self, from: data)
+
+            let existing = try modelContext.fetch(FetchDescriptor<DocFolder>())
+            let existingById = Dictionary(uniqueKeysWithValues: existing.compactMap { f in
+                UUID(uuidString: f.id.uuidString).map { ($0, f) }
+            })
+
+            var seenIds = Set<UUID>()
+
+            for apiFolder in apiFolders {
+                guard let folderId = UUID(uuidString: apiFolder.id) else { continue }
+                seenIds.insert(folderId)
+
+                if let existingFolder = existingById[folderId] {
+                    existingFolder.name = apiFolder.name
+                    existingFolder.position = apiFolder.position
+                } else {
+                    let newFolder = DocFolder(name: apiFolder.name, position: apiFolder.position)
+                    newFolder.id = folderId
+                    if let parentIdStr = apiFolder.parentId {
+                        newFolder.parentId = UUID(uuidString: parentIdStr)
+                    }
+                    modelContext.insert(newFolder)
+                }
+            }
+
+            // Don't delete folders not from API — user may have created locally
+            try modelContext.save()
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     // MARK: - Documents
@@ -45,13 +87,18 @@ final class SyncService {
                 UUID(uuidString: d.id.uuidString).map { ($0, d) }
             })
 
+            // Fetch all folders for linking
+            let allFolders = try modelContext.fetch(FetchDescriptor<DocFolder>())
+            let foldersById = Dictionary(uniqueKeysWithValues: allFolders.compactMap { f in
+                UUID(uuidString: f.id.uuidString).map { ($0, f) }
+            })
+
             var seenIds = Set<UUID>()
 
             for apiDoc in apiDocList {
                 guard let docId = UUID(uuidString: apiDoc.id) else { continue }
                 seenIds.insert(docId)
 
-                // Fetch full doc content
                 let detailURL = baseURL.appendingPathComponent("documents/\(apiDoc.id)")
                 let (detailData, _) = try await URLSession.shared.data(from: detailURL)
                 let fullDoc = try decoder.decode(APIDocumentFull.self, from: detailData)
@@ -59,21 +106,23 @@ final class SyncService {
                 if let existingDoc = existingById[docId] {
                     existingDoc.title = fullDoc.title
                     existingDoc.content = fullDoc.content
-                    existingDoc.category = fullDoc.category
+                    if let folderIdStr = fullDoc.folderId, let folderId = UUID(uuidString: folderIdStr) {
+                        existingDoc.folder = foldersById[folderId]
+                    }
                 } else {
-                    let newDoc = UserDocument(title: fullDoc.title, content: fullDoc.content, category: fullDoc.category)
+                    let newDoc = UserDocument(title: fullDoc.title, content: fullDoc.content)
                     newDoc.id = docId
+                    if let folderIdStr = fullDoc.folderId, let folderId = UUID(uuidString: folderIdStr) {
+                        newDoc.folder = foldersById[folderId]
+                    }
                     modelContext.insert(newDoc)
                 }
             }
 
-            for (id, doc) in existingById where !seenIds.contains(id) {
-                modelContext.delete(doc)
-            }
-
+            // Don't delete docs not from API — user may have created locally
             try modelContext.save()
         } catch {
-            lastError = error.localizedDescription
+            lastError = (lastError ?? "") + " " + error.localizedDescription
         }
     }
 
@@ -179,15 +228,22 @@ private struct APIProtocol: Decodable {
     let documentId: String?
 }
 
+private struct APIFolder: Decodable {
+    let id: String
+    let name: String
+    let parentId: String?
+    let position: Int
+}
+
 private struct APIDocumentSummary: Decodable {
     let id: String
     let title: String
-    let category: String?
+    let folderId: String?
 }
 
 private struct APIDocumentFull: Decodable {
     let id: String
     let title: String
     let content: String
-    let category: String?
+    let folderId: String?
 }

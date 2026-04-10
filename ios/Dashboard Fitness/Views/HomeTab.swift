@@ -91,11 +91,15 @@ struct LinkedDocView: View {
     var body: some View {
         if let doc = document {
             ScrollView {
-                Text(doc.content.isEmpty ? "No content yet." : doc.content)
-                    .font(.body)
-                    .foregroundStyle(doc.content.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                if doc.content.isEmpty {
+                    Text("No content yet.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else {
+                    MarkdownView(content: doc.content)
+                        .padding()
+                }
             }
             .navigationTitle(doc.title)
             .navigationBarTitleDisplayMode(.inline)

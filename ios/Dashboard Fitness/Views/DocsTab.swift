@@ -2,109 +2,138 @@ import SwiftUI
 import SwiftData
 
 struct DocsTab: View {
-    @Query(sort: \UserDocument.updatedAt, order: .reverse) private var documents: [UserDocument]
-    @Environment(\.modelContext) private var modelContext
-    @State private var showingNewDoc = false
+    var body: some View {
+        NavigationStack {
+            FolderView(folder: nil, title: "Docs")
+                .navigationDestination(for: DocFolder.self) { folder in
+                    FolderView(folder: folder, title: folder.name)
+                }
+                .navigationDestination(for: UserDocument.self) { doc in
+                    DocumentView(document: doc)
+                }
+        }
+    }
+}
 
-    private var grouped: [(String, [UserDocument])] {
-        let dict = Dictionary(grouping: documents) { $0.category ?? "Uncategorized" }
-        return dict.sorted { $0.key < $1.key }
+// MARK: - Folder View
+
+struct FolderView: View {
+    let folder: DocFolder?
+    let title: String
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allFolders: [DocFolder]
+    @Query private var allDocs: [UserDocument]
+    @State private var showingNewFolder = false
+    @State private var showingNewDoc = false
+    @State private var newItemName = ""
+
+    private var subfolders: [DocFolder] {
+        if let folder {
+            return folder.sortedChildren
+        }
+        return allFolders.filter { $0.parent == nil }.sorted { $0.position < $1.position }
+    }
+
+    private var documents: [UserDocument] {
+        if let folder {
+            return folder.sortedDocuments
+        }
+        return allDocs.filter { $0.folder == nil }.sorted { $0.title < $1.title }
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if documents.isEmpty {
-                    ContentUnavailableView(
-                        "No Documents",
-                        systemImage: "doc.text",
-                        description: Text("Tap + to create your first document")
-                    )
-                } else {
-                    List {
-                        ForEach(grouped, id: \.0) { category, docs in
-                            Section(category) {
-                                ForEach(docs) { doc in
-                                    NavigationLink(value: doc) {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(doc.title)
-                                                .font(.body)
-                                            Text(doc.updatedAt, format: .dateTime.month().day().year())
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                                .onDelete { offsets in
-                                    for offset in offsets {
-                                        modelContext.delete(docs[offset])
-                                    }
-                                }
+        List {
+            if !subfolders.isEmpty {
+                Section("Folders") {
+                    ForEach(subfolders) { subfolder in
+                        NavigationLink(value: subfolder) {
+                            Label(subfolder.name, systemImage: "folder")
+                        }
+                    }
+                    .onDelete(perform: deleteFolders)
+                }
+            }
+
+            if !documents.isEmpty {
+                Section("Documents") {
+                    ForEach(documents) { doc in
+                        NavigationLink(value: doc) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(doc.title)
+                                Text(doc.updatedAt, format: .dateTime.month().day().year())
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
-                    .navigationDestination(for: UserDocument.self) { doc in
-                        DocEditorView(document: doc)
-                    }
+                    .onDelete(perform: deleteDocuments)
                 }
             }
-            .navigationTitle("Docs")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: { showingNewDoc = true }) {
-                        Label("New Document", systemImage: "plus")
+
+            if subfolders.isEmpty && documents.isEmpty {
+                ContentUnavailableView(
+                    "Empty",
+                    systemImage: "folder",
+                    description: Text("Add folders or documents with the + button")
+                )
+            }
+        }
+        .navigationTitle(title)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(action: { newItemName = ""; showingNewFolder = true }) {
+                        Label("New Folder", systemImage: "folder.badge.plus")
                     }
+                    Button(action: { newItemName = ""; showingNewDoc = true }) {
+                        Label("New Document", systemImage: "doc.badge.plus")
+                    }
+                } label: {
+                    Image(systemName: "plus")
                 }
             }
-            .sheet(isPresented: $showingNewDoc) {
-                NewDocView()
-            }
+        }
+        .alert("New Folder", isPresented: $showingNewFolder) {
+            TextField("Folder name", text: $newItemName)
+            Button("Create") { createFolder() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("New Document", isPresented: $showingNewDoc) {
+            TextField("Document title", text: $newItemName)
+            Button("Create") { createDocument() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func createFolder() {
+        guard !newItemName.isEmpty else { return }
+        let newFolder = DocFolder(name: newItemName, position: subfolders.count)
+        newFolder.parent = folder
+        modelContext.insert(newFolder)
+    }
+
+    private func createDocument() {
+        guard !newItemName.isEmpty else { return }
+        let doc = UserDocument(title: newItemName, folder: folder)
+        modelContext.insert(doc)
+    }
+
+    private func deleteFolders(at offsets: IndexSet) {
+        for offset in offsets {
+            modelContext.delete(subfolders[offset])
+        }
+    }
+
+    private func deleteDocuments(at offsets: IndexSet) {
+        for offset in offsets {
+            modelContext.delete(documents[offset])
         }
     }
 }
 
-// MARK: - New Document
+// MARK: - Document View (read + edit with markdown rendering)
 
-struct NewDocView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var category = "notes"
-
-    private let categories = ["training", "nutrition", "research", "notes"]
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Title", text: $title)
-                Picker("Category", selection: $category) {
-                    ForEach(categories, id: \.self) { cat in
-                        Text(cat.capitalized).tag(cat)
-                    }
-                }
-            }
-            .navigationTitle("New Document")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        let doc = UserDocument(title: title, category: category)
-                        modelContext.insert(doc)
-                        dismiss()
-                    }
-                    .disabled(title.isEmpty)
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Document Editor
-
-struct DocEditorView: View {
+struct DocumentView: View {
     @Bindable var document: UserDocument
     @State private var isEditing = false
 
@@ -116,11 +145,16 @@ struct DocEditorView: View {
                     .padding(.horizontal, 4)
             } else {
                 ScrollView {
-                    Text(document.content.isEmpty ? "Empty document. Tap Edit to start writing." : document.content)
-                        .font(.body)
-                        .foregroundStyle(document.content.isEmpty ? .secondary : .primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                    if document.content.isEmpty {
+                        ContentUnavailableView(
+                            "Empty Document",
+                            systemImage: "doc.text",
+                            description: Text("Tap Edit to start writing")
+                        )
+                    } else {
+                        MarkdownView(content: document.content)
+                            .padding()
+                    }
                 }
             }
         }
@@ -141,5 +175,5 @@ struct DocEditorView: View {
 
 #Preview {
     DocsTab()
-        .modelContainer(for: UserDocument.self, inMemory: true)
+        .modelContainer(for: [DocFolder.self, UserDocument.self], inMemory: true)
 }

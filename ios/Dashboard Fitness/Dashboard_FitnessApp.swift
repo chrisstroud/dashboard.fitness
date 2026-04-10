@@ -15,6 +15,7 @@ struct Dashboard_FitnessApp: App {
             ProtocolGroup.self,
             UserProtocol.self,
             ProtocolCompletion.self,
+            DocFolder.self,
             UserDocument.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
