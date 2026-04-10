@@ -6,8 +6,6 @@ struct ProtocolDetailView: View {
     let label: String
     let subtitle: String?
     let documentId: UUID?
-
-    // If viewing from Today tab, we have the daily task
     var dailyTask: DailyTask?
 
     @State private var detail: ProtocolDetailData?
@@ -22,77 +20,55 @@ struct ProtocolDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(label)
-                        .font(.title2.bold())
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let detail {
-                        HStack(spacing: 12) {
-                            if let section = detail.sectionName {
-                                Text(section)
-                                    .font(.caption)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(Color.blue.opacity(0.1), in: Capsule())
-                                    .foregroundStyle(.blue)
-                            }
-                            if let group = detail.groupName {
-                                Text(group)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal)
+            VStack(spacing: 20) {
+                // Header card
+                headerCard
+                    .padding(.horizontal, 16)
 
-                // Today's status (if from Today tab)
+                // Today status
                 if let task = dailyTask {
-                    todaySection(task)
+                    todayCard(task)
+                        .padding(.horizontal, 16)
                 }
 
                 // Stats
-                if let stats = detail?.stats {
-                    statsSection(stats)
+                if let stats = detail?.stats, stats.totalDays > 0 {
+                    statsCard(stats)
+                        .padding(.horizontal, 16)
                 }
 
-                // Schedule
-                scheduleSection()
-
-                // Linked Document
+                // Reference doc
                 if let doc = detail?.document {
-                    documentSection(doc)
+                    documentCard(doc)
+                        .padding(.horizontal, 16)
                 }
 
-                // Change History
+                // Change history
                 if let changes = detail?.changes, !changes.isEmpty {
-                    changeLogSection(changes)
+                    changeLogCard(changes)
+                        .padding(.horizontal, 16)
                 }
 
                 if isLoading {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                        Spacer()
-                    }
-                    .padding()
+                    ProgressView()
+                        .padding(.vertical, 20)
                 }
+
+                Spacer(minLength: 40)
             }
-            .padding(.vertical)
+            .padding(.top, 8)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Protocol")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let proto = masterProtocol {
                 ToolbarItem(placement: .primaryAction) {
-                    NavigationLink("Edit") {
+                    NavigationLink {
                         ProtocolEditor(proto: proto)
+                    } label: {
+                        Text("Edit")
+                            .font(.body.weight(.medium))
                     }
                 }
             }
@@ -100,145 +76,180 @@ struct ProtocolDetailView: View {
         .task { await loadDetail() }
     }
 
-    // MARK: - Sections
+    // MARK: - Header
 
-    @ViewBuilder
-    private func todaySection(_ task: DailyTask) -> some View {
+    private var headerCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("TODAY")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
+            Text(label)
+                .font(.title2.bold())
 
-            HStack(spacing: 16) {
-                StatusButton(label: "Complete", icon: "checkmark.circle.fill", color: .green,
-                             isActive: task.status == "completed") {
-                    task.status = task.status == "completed" ? "pending" : "completed"
-                    task.completedAt = task.status == "pending" ? nil : Date()
-                }
-                StatusButton(label: "Skip", icon: "minus.circle.fill", color: .orange,
-                             isActive: task.status == "skipped") {
-                    task.status = task.status == "skipped" ? "pending" : "skipped"
-                    task.completedAt = task.status == "pending" ? nil : Date()
-                }
+            if let subtitle {
+                Text(subtitle)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
             }
-        }
-        .padding(.horizontal)
-    }
 
-    @ViewBuilder
-    private func statsSection(_ stats: ProtocolStats) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STATS")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 0) {
-                StatCard(value: "\(stats.currentStreak)", label: "Streak", icon: "flame.fill", color: .orange)
-                StatCard(value: "\(stats.completedDays)", label: "Completed", icon: "checkmark", color: .green)
-                StatCard(value: "\(Int(stats.completionRate * 100))%", label: "Rate", icon: "chart.bar.fill", color: .blue)
-                StatCard(value: "\(stats.totalDays)", label: "Days", icon: "calendar", color: .purple)
+            HStack(spacing: 8) {
+                if let section = detail?.sectionName {
+                    Label(section, systemImage: "clock")
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1), in: Capsule())
+                        .foregroundStyle(.blue)
+                }
+                if let group = detail?.groupName {
+                    Text(group)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray5), in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+                if let time = detail?.scheduledTime {
+                    Label(time, systemImage: "clock.fill")
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.purple.opacity(0.1), in: Capsule())
+                        .foregroundStyle(.purple)
+                }
             }
 
             if let firstTracked = detail?.firstTracked {
                 Text("Tracking since \(firstTracked)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
             }
         }
-        .padding(.horizontal)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    @ViewBuilder
-    private func scheduleSection() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SCHEDULE")
+    // MARK: - Today Status
+
+    private func todayCard(_ task: DailyTask) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("TODAY")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+                .tracking(0.8)
 
-            if let time = detail?.scheduledTime {
-                HStack {
-                    Image(systemName: "clock")
-                        .foregroundStyle(.blue)
-                    Text(time)
-                        .font(.body)
+            HStack(spacing: 12) {
+                StatusButton(label: "Complete", icon: "checkmark.circle.fill", color: .green,
+                             isActive: task.status == "completed") {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        task.status = task.status == "completed" ? "pending" : "completed"
+                        task.completedAt = task.status == "pending" ? nil : Date()
+                    }
                 }
-            } else {
-                Text("No specific time set")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                StatusButton(label: "Skip", icon: "forward.circle.fill", color: .orange,
+                             isActive: task.status == "skipped") {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        task.status = task.status == "skipped" ? "pending" : "skipped"
+                        task.completedAt = task.status == "pending" ? nil : Date()
+                    }
+                }
             }
         }
-        .padding(.horizontal)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    @ViewBuilder
-    private func documentSection(_ doc: ProtocolDocRef) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    // MARK: - Stats
+
+    private func statsCard(_ stats: ProtocolStats) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("STATS")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .tracking(0.8)
+
+            HStack(spacing: 0) {
+                StatCard(value: "\(stats.currentStreak)", label: "Streak", icon: "flame.fill", color: .orange)
+                StatCard(value: "\(stats.completedDays)", label: "Done", icon: "checkmark", color: .green)
+                StatCard(value: "\(Int(stats.completionRate * 100))%", label: "Rate", icon: "chart.bar.fill", color: .blue)
+                StatCard(value: "\(stats.totalDays)d", label: "Tracked", icon: "calendar", color: .purple)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: - Document
+
+    private func documentCard(_ doc: ProtocolDocRef) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             Text("REFERENCE")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+                .tracking(0.8)
 
             if let localDoc = allDocs.first(where: { $0.id.uuidString == doc.id }) {
                 NavigationLink {
                     ScrollView {
-                        MarkdownView(content: localDoc.content)
-                            .padding()
+                        MarkdownView(content: localDoc.content).padding()
                     }
                     .navigationTitle(localDoc.title)
                     .navigationBarTitleDisplayMode(.inline)
+                    .background(Color(.systemGroupedBackground))
                 } label: {
-                    HStack {
+                    HStack(spacing: 12) {
                         Image(systemName: "doc.text.fill")
+                            .font(.title3)
                             .foregroundStyle(.blue)
-                        Text(doc.title)
-                            .font(.body)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(doc.title)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Text("Tap to view")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(.systemGray3))
                     }
-                    .padding(12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-                }
-            } else {
-                HStack {
-                    Image(systemName: "doc.text")
-                        .foregroundStyle(.secondary)
-                    Text(doc.title)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.horizontal)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    @ViewBuilder
-    private func changeLogSection(_ changes: [ProtocolChange]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CHANGE HISTORY")
+    // MARK: - Change Log
+
+    private func changeLogCard(_ changes: [ProtocolChange]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("CHANGES")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
+                .tracking(0.8)
 
             ForEach(Array(changes.enumerated()), id: \.offset) { _, change in
                 HStack(alignment: .top, spacing: 10) {
                     Circle()
-                        .fill(Color.blue)
-                        .frame(width: 8, height: 8)
-                        .padding(.top, 5)
+                        .fill(Color.blue.opacity(0.6))
+                        .frame(width: 6, height: 6)
+                        .padding(.top, 6)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(changeDescription(change))
                             .font(.subheadline)
                         if let dateStr = change.changedAt {
-                            Text(dateStr.prefix(10))
+                            Text(String(dateStr.prefix(10)))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                         }
                     }
                 }
             }
         }
-        .padding(.horizontal)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func changeDescription(_ change: ProtocolChange) -> String {
@@ -266,14 +277,12 @@ struct ProtocolDetailView: View {
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             detail = try decoder.decode(ProtocolDetailData.self, from: data)
-        } catch {
-            // Silently fail — show what we have
-        }
+        } catch {}
         isLoading = false
     }
 }
 
-// MARK: - Components
+// MARK: - Reusable Components
 
 struct StatusButton: View {
     let label: String
@@ -286,12 +295,13 @@ struct StatusButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                Text(label)
                     .font(.subheadline)
+                Text(label)
+                    .font(.subheadline.weight(.medium))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(isActive ? color.opacity(0.15) : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+            .padding(.vertical, 12)
+            .background(isActive ? color.opacity(0.12) : Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .foregroundStyle(isActive ? color : .secondary)
         }
         .buttonStyle(.plain)
@@ -310,14 +320,13 @@ struct StatCard: View {
                 .font(.caption)
                 .foregroundStyle(color)
             Text(value)
-                .font(.title3.bold().monospacedDigit())
+                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 8)
     }
 }
 

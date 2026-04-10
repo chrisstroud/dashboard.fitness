@@ -9,53 +9,69 @@ struct MasterTemplateEditor: View {
 
     var body: some View {
         List {
+            if sections.isEmpty {
+                ContentUnavailableView(
+                    "No Protocols",
+                    systemImage: "list.bullet.rectangle",
+                    description: Text("Tap + to create your first section")
+                )
+            }
+
             ForEach(sections) { section in
                 Section {
-                    // Groups in this section
                     ForEach(section.sortedGroups) { group in
                         NavigationLink {
                             GroupEditor(group: group)
                         } label: {
-                            HStack {
+                            HStack(spacing: 12) {
+                                Image(systemName: "folder.fill")
+                                    .foregroundStyle(.blue)
+                                    .font(.body)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(group.name).font(.body.bold())
-                                    Text("\(group.protocols.count) protocols")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text(group.name)
+                                        .font(.body.weight(.medium))
+                                    Text("\(group.protocols.count) protocol\(group.protocols.count == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                                 Spacer()
                             }
                         }
                     }
-                    .onMove { from, to in
-                        moveGroups(in: section, from: from, to: to)
-                    }
-                    .onDelete { offsets in
-                        deleteGroups(in: section, at: offsets)
-                    }
+                    .onMove { from, to in moveGroups(in: section, from: from, to: to) }
+                    .onDelete { offsets in deleteGroups(in: section, at: offsets) }
 
                     Button {
                         addGroup(to: section)
                     } label: {
-                        Label("Add Group", systemImage: "plus")
+                        Label("Add Group", systemImage: "plus.circle.fill")
                             .font(.subheadline)
+                            .foregroundStyle(.blue)
                     }
                 } header: {
                     HStack {
                         Text(section.name)
+                            .font(.subheadline.weight(.semibold))
                         Spacer()
                         Menu {
-                            Button("Rename") { renameSection(section) }
-                            Button("Delete", role: .destructive) { modelContext.delete(section) }
+                            Button { renameSection(section) } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                modelContext.delete(section)
+                                LocalRefreshService.refreshToday(modelContext: modelContext)
+                            } label: {
+                                Label("Delete Section", systemImage: "trash")
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
-                                .font(.caption)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
-            .onMove { from, to in
-                moveSections(from: from, to: to)
-            }
+            .onMove { from, to in moveSections(from: from, to: to) }
         }
         .navigationTitle("My Protocols")
         .toolbar {
@@ -105,10 +121,7 @@ struct MasterTemplateEditor: View {
     }
 
     private func renameSection(_ section: ProtocolSection) {
-        // SwiftUI alert doesn't support pre-filled text well, so we use a simple approach
-        // In a real app you'd use a sheet with a TextField
         newSectionName = section.name
-        // For now, the user can rename via the alert
         showingNewSection = true
     }
 }
@@ -125,13 +138,25 @@ struct GroupEditor: View {
     var body: some View {
         List {
             Section("Group Settings") {
-                TextField("Name", text: $group.name)
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(.blue)
+                    TextField("Name", text: $group.name)
+                        .font(.body.weight(.medium))
+                }
                 if let section = group.section {
                     LabeledContent("Section", value: section.name)
                 }
             }
 
-            Section("Protocols (\(group.protocols.count))") {
+            Section {
+                if group.protocols.isEmpty {
+                    Text("No protocols yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
+                }
+
                 ForEach(group.sortedProtocols) { proto in
                     NavigationLink {
                         ProtocolDetailView(
@@ -141,16 +166,18 @@ struct GroupEditor: View {
                             documentId: proto.documentId
                         )
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(proto.label)
-                            HStack(spacing: 8) {
-                                if let subtitle = proto.subtitle {
-                                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                                }
-                                if proto.documentId != nil {
-                                    Label("Linked", systemImage: "doc.text")
-                                        .font(.caption2).foregroundStyle(.blue)
-                                }
+                                .font(.body)
+                            if let subtitle = proto.subtitle {
+                                Text(subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if proto.documentId != nil {
+                                Label("Has reference doc", systemImage: "doc.text")
+                                    .font(.caption2)
+                                    .foregroundStyle(.blue)
                             }
                         }
                     }
@@ -168,8 +195,12 @@ struct GroupEditor: View {
                 Button {
                     showingNewProtocol = true
                 } label: {
-                    Label("Add Protocol", systemImage: "plus")
+                    Label("Add Protocol", systemImage: "plus.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.blue)
                 }
+            } header: {
+                Text("Protocols (\(group.protocols.count))")
             }
         }
         .navigationTitle(group.name)
@@ -212,7 +243,7 @@ struct ProtocolEditor: View {
                 ))
             }
 
-            Section("Linked Document") {
+            Section {
                 Picker("Document", selection: $selectedDocId) {
                     Text("None").tag(nil as UUID?)
                     ForEach(allDocs) { doc in
@@ -227,13 +258,18 @@ struct ProtocolEditor: View {
                     NavigationLink {
                         DocumentView(document: doc)
                     } label: {
-                        Label("View: \(doc.title)", systemImage: "doc.text")
-                            .font(.subheadline).foregroundStyle(.blue)
+                        Label(doc.title, systemImage: "doc.text.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.blue)
                     }
                 }
+            } header: {
+                Text("Reference Document")
+            } footer: {
+                Text("Link a document that explains why this protocol exists.")
             }
         }
-        .navigationTitle(proto.label)
+        .navigationTitle("Edit Protocol")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectedDocId = proto.documentId }
         .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }

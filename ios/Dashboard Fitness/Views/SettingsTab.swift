@@ -5,6 +5,8 @@ struct SettingsTab: View {
     @State private var email = ""
     @State private var selectedTimezone = TimeZone.current.identifier
     @State private var isLoading = true
+    @State private var isSaving = false
+    @State private var showSaved = false
 
     private let commonTimezones = [
         "America/New_York", "America/Chicago", "America/Denver",
@@ -17,52 +19,111 @@ struct SettingsTab: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Documents") {
+                Section {
                     NavigationLink {
                         DocsTab()
                     } label: {
-                        Label("My Docs", systemImage: "doc.text")
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("My Documents")
+                                Text("Reference docs, notes, research")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "folder.fill")
+                                .foregroundStyle(.blue)
+                        }
                     }
                 }
 
                 Section("Profile") {
-                    TextField("Display Name", text: $displayName)
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                }
-
-                Section("Time Zone") {
-                    Picker("Time Zone", selection: $selectedTimezone) {
-                        ForEach(commonTimezones, id: \.self) { tz in
-                            Text(tz.replacingOccurrences(of: "_", with: " "))
-                                .tag(tz)
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue.gradient)
+                                .frame(width: 48, height: 48)
+                            Text(displayName.prefix(1).uppercased())
+                                .font(.title3.bold())
+                                .foregroundStyle(.white)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            TextField("Display Name", text: $displayName)
+                                .font(.body.weight(.medium))
+                            TextField("email@example.com", text: $email)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
                         }
                     }
-                    Text("Daily protocols are created at midnight in your time zone.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Account") {
-                    Label("Sign in with Apple", systemImage: "person.crop.circle")
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("About") {
-                    LabeledContent("Version", value: "0.2.0")
+                    .padding(.vertical, 4)
                 }
 
                 Section {
-                    Button("Save Changes") {
-                        Task { await saveProfile() }
+                    Picker("Time Zone", selection: $selectedTimezone) {
+                        ForEach(commonTimezones, id: \.self) { tz in
+                            Text(formatTimezone(tz)).tag(tz)
+                        }
                     }
+                } header: {
+                    Text("Time Zone")
+                } footer: {
+                    Text("Daily protocols are created at midnight in your time zone.")
+                }
+
+                Section("Account") {
+                    Button(action: {}) {
+                        HStack {
+                            Image(systemName: "apple.logo")
+                                .font(.title3)
+                            Text("Sign in with Apple")
+                            Spacer()
+                            Text("Coming soon")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+
+                Section {
+                    Button(action: { Task { await saveProfile() } }) {
+                        HStack {
+                            Spacer()
+                            if isSaving {
+                                ProgressView()
+                            } else if showSaved {
+                                Label("Saved", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Text("Save Changes")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isSaving)
+                }
+
+                Section {
+                    LabeledContent("Version", value: "0.2.0")
+                    LabeledContent("Build", value: "1")
+                } header: {
+                    Text("About")
                 }
             }
             .navigationTitle("Settings")
             .task { await loadProfile() }
         }
+    }
+
+    private func formatTimezone(_ tz: String) -> String {
+        let parts = tz.split(separator: "/")
+        if parts.count == 2 {
+            return String(parts[1]).replacingOccurrences(of: "_", with: " ")
+        }
+        return tz.replacingOccurrences(of: "_", with: " ")
     }
 
     private func loadProfile() async {
@@ -84,6 +145,7 @@ struct SettingsTab: View {
     }
 
     private func saveProfile() async {
+        isSaving = true
         do {
             #if DEBUG
             let url = URL(string: "http://localhost:5001/api/users/me")!
@@ -93,14 +155,17 @@ struct SettingsTab: View {
             var request = URLRequest(url: url)
             request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let body: [String: String] = [
+            request.httpBody = try JSONEncoder().encode([
                 "display_name": displayName,
                 "email": email,
                 "timezone": selectedTimezone,
-            ]
-            request.httpBody = try JSONEncoder().encode(body)
+            ])
             let _ = try await URLSession.shared.data(for: request)
+            showSaved = true
+            try? await Task.sleep(for: .seconds(2))
+            showSaved = false
         } catch {}
+        isSaving = false
     }
 }
 

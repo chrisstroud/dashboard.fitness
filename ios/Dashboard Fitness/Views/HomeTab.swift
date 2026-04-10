@@ -3,7 +3,6 @@ import SwiftData
 
 struct HomeTab: View {
     @Query(sort: \DailyInstance.date, order: .reverse) private var instances: [DailyInstance]
-    @Environment(\.modelContext) private var modelContext
 
     private var todayInstance: DailyInstance? {
         let calendar = Calendar.current
@@ -18,44 +17,94 @@ struct HomeTab: View {
                 } else {
                     VStack(spacing: 16) {
                         ProgressView()
-                        Text("Loading today's protocols...")
+                            .controlSize(.large)
+                        Text("Setting up your day...")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                    .frame(maxHeight: .infinity)
                 }
             }
         }
     }
 }
 
+// MARK: - Daily Instance View
+
 struct DailyInstanceView: View {
     let instance: DailyInstance
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         let sections = instance.tasksBySections()
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Today")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                    Text(instance.date, format: .dateTime.weekday(.wide).month(.wide).day())
-                        .font(.largeTitle.bold())
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 16)
+            VStack(alignment: .leading, spacing: 24) {
+                // Hero header
+                DayHeader(instance: instance)
 
+                // Sections
                 ForEach(sections) { section in
                     TaskSectionView(section: section)
                 }
 
+                // Workout picker
                 WorkoutChipSection()
+
+                Spacer(minLength: 40)
             }
-            .padding(.vertical)
+            .padding(.top, 8)
         }
+        .background(Color(.systemGroupedBackground))
+        .scrollIndicators(.hidden)
+    }
+}
+
+// MARK: - Day Header with Progress Ring
+
+struct DayHeader: View {
+    let instance: DailyInstance
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(instance.date, format: .dateTime.weekday(.wide))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+                Text(instance.date, format: .dateTime.month(.wide).day())
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+            }
+
+            Spacer()
+
+            // Progress ring
+            ZStack {
+                Circle()
+                    .stroke(Color(.systemGray5), lineWidth: 4)
+                Circle()
+                    .trim(from: 0, to: instance.completionRate)
+                    .stroke(completionColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.4), value: instance.completionRate)
+
+                VStack(spacing: 0) {
+                    Text("\(instance.completedTasks)")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("/\(instance.totalTasks)")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 56, height: 56)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var completionColor: Color {
+        if instance.completionRate >= 0.8 { return .green }
+        if instance.completionRate >= 0.4 { return .blue }
+        return .orange
     }
 }
 
@@ -66,27 +115,36 @@ struct TaskSectionView: View {
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack(alignment: .center) {
                 Text(section.name.uppercased())
                     .font(.caption.bold())
-                    .foregroundStyle(.blue)
-                Text("\(section.completedCount)/\(section.totalCount)")
-                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .tracking(0.8)
+
                 Spacer()
+
+                Text("\(section.completedCount)/\(section.totalCount)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+
                 Button(action: toggleSection) {
-                    Image(systemName: section.allCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-                        .foregroundStyle(section.allCompleted ? .green : .secondary)
+                    Image(systemName: section.allCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(section.allCompleted ? .green : Color(.systemGray3))
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 20)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 20)
 
-            ForEach(section.groups) { group in
-                TaskGroupView(group: group)
+            // Groups
+            VStack(spacing: 2) {
+                ForEach(section.groups) { group in
+                    TaskGroupCard(group: group)
+                }
             }
+            .padding(.horizontal, 16)
         }
     }
 
@@ -99,42 +157,58 @@ struct TaskSectionView: View {
     }
 }
 
-// MARK: - Group
+// MARK: - Group Card
 
-struct TaskGroupView: View {
+struct TaskGroupCard: View {
     let group: DailyGroup
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Group header
             HStack {
                 Text(group.name)
-                    .font(.subheadline.bold())
-                Text("\(group.completedCount)/\(group.tasks.count)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold))
+
                 Spacer()
+
+                Text("\(group.completedCount)/\(group.tasks.count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+
                 Button(action: toggleGroup) {
-                    Image(systemName: group.allCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-                        .foregroundStyle(group.allCompleted ? .green : .secondary)
-                        .font(.callout)
+                    Image(systemName: group.allCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 17))
+                        .foregroundStyle(group.allCompleted ? .green : Color(.systemGray3))
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
 
-            ForEach(group.tasks) { task in
+            Divider()
+                .padding(.leading, 16)
+
+            // Tasks
+            ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in
                 DailyTaskRow(task: task)
+
+                if index < group.tasks.count - 1 {
+                    Divider()
+                        .padding(.leading, 52)
+                }
             }
         }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func toggleGroup() {
         let newStatus = group.allCompleted ? "pending" : "completed"
-        for task in group.tasks {
-            task.status = newStatus
-            task.completedAt = newStatus == "pending" ? nil : Date()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            for task in group.tasks {
+                task.status = newStatus
+                task.completedAt = newStatus == "pending" ? nil : Date()
+            }
         }
     }
 }
@@ -145,12 +219,18 @@ struct DailyTaskRow: View {
     @Bindable var task: DailyTask
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(spacing: 12) {
+            // Status circle
             Button(action: cycleStatus) {
-                statusIcon.font(.body).frame(width: 22)
+                Image(systemName: statusIcon)
+                    .font(.system(size: 22))
+                    .foregroundStyle(statusColor)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 28)
             }
             .buttonStyle(.plain)
 
+            // Content — tappable for detail
             NavigationLink {
                 ProtocolDetailView(
                     protocolId: task.sourceProtocolId ?? "",
@@ -160,72 +240,66 @@ struct DailyTaskRow: View {
                     dailyTask: task
                 )
             } label: {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(task.label)
-                            .font(.subheadline)
-                            .strikethrough(task.status == "completed")
+                            .font(.body)
                             .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                            .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+
                         if let time = task.scheduledTime {
                             Text(time)
-                                .font(.caption2)
+                                .font(.caption2.weight(.medium))
                                 .foregroundStyle(.blue)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.blue.opacity(0.1), in: Capsule())
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.08), in: Capsule())
                         }
                     }
+
                     if let subtitle = task.subtitle {
-                        Text(subtitle).font(.caption).foregroundStyle(.tertiary)
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                 }
-                Spacer()
+
+                Spacer(minLength: 4)
+
                 Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color(.systemGray3))
             }
         }
-        .padding(.horizontal).padding(.leading, 8).padding(.vertical, 5)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder private var statusIcon: some View {
+    private var statusIcon: String {
         switch task.taskStatus {
-        case .pending: Image(systemName: "circle").foregroundStyle(.secondary)
-        case .completed: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .skipped: Image(systemName: "minus.circle.fill").foregroundStyle(.orange)
+        case .pending: "circle"
+        case .completed: "checkmark.circle.fill"
+        case .skipped: "minus.circle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch task.taskStatus {
+        case .pending: Color(.systemGray3)
+        case .completed: .green
+        case .skipped: .orange
         }
     }
 
     private func cycleStatus() {
-        switch task.taskStatus {
-        case .pending: task.status = "completed"; task.completedAt = Date()
-        case .completed: task.status = "skipped"; task.completedAt = Date()
-        case .skipped: task.status = "pending"; task.completedAt = nil
-        }
-    }
-}
-
-// MARK: - Linked Doc View
-
-struct LinkedDocView: View {
-    let documentId: UUID
-    @Query private var allDocs: [UserDocument]
-    private var document: UserDocument? { allDocs.first { $0.id == documentId } }
-
-    var body: some View {
-        if let doc = document {
-            ScrollView {
-                if doc.content.isEmpty {
-                    Text("No content yet.").foregroundStyle(.secondary).padding()
-                } else {
-                    MarkdownView(content: doc.content).padding()
-                }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            switch task.taskStatus {
+            case .pending: task.status = "completed"; task.completedAt = Date()
+            case .completed: task.status = "skipped"; task.completedAt = Date()
+            case .skipped: task.status = "pending"; task.completedAt = nil
             }
-            .navigationTitle(doc.title)
-            .navigationBarTitleDisplayMode(.inline)
-        } else {
-            ContentUnavailableView("Document Not Found", systemImage: "doc.questionmark")
         }
     }
 }
@@ -234,23 +308,33 @@ struct LinkedDocView: View {
 
 struct WorkoutChipSection: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("WORKOUT").font(.caption.bold()).foregroundStyle(.blue)
+                Text("WORKOUT")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .tracking(0.8)
                 Spacer()
-                Text("Program ›").font(.caption).foregroundStyle(.blue)
-            }
-            .padding(.horizontal).padding(.top, 20)
-
-            FlowLayout(spacing: 8) {
-                ForEach(["Bench Day", "Squat Day", "Press Day", "Hinge Day", "Zone 2", "Zone 2", "Zone 2", "Zone 2", "HIIT"], id: \.self) { name in
-                    Text(name)
-                        .font(.subheadline)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3)))
+                Button(action: {}) {
+                    Text("Program")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.blue)
                 }
             }
-            .padding(.horizontal).padding(.bottom, 8)
+            .padding(.horizontal, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(["Bench Day", "Squat Day", "Press Day", "Hinge Day", "Zone 2", "HIIT"], id: \.self) { name in
+                        Text(name)
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 }
@@ -277,6 +361,30 @@ struct FlowLayout: Layout {
             positions.append(CGPoint(x: x, y: y)); rh = max(rh, s.height); x += s.width + spacing
         }
         return (CGSize(width: maxW, height: y + rh), positions)
+    }
+}
+
+// MARK: - Linked Doc View (reused from protocol detail)
+
+struct LinkedDocView: View {
+    let documentId: UUID
+    @Query private var allDocs: [UserDocument]
+    private var document: UserDocument? { allDocs.first { $0.id == documentId } }
+
+    var body: some View {
+        if let doc = document {
+            ScrollView {
+                if doc.content.isEmpty {
+                    Text("No content yet.").foregroundStyle(.secondary).padding()
+                } else {
+                    MarkdownView(content: doc.content).padding()
+                }
+            }
+            .navigationTitle(doc.title)
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            ContentUnavailableView("Document Not Found", systemImage: "doc.questionmark")
+        }
     }
 }
 
