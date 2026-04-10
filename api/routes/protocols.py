@@ -6,7 +6,8 @@ from flask import Blueprint, jsonify, request
 
 from api.models import db
 from api.models.protocol import (
-    DailyInstance, DailyTask, Protocol, ProtocolGroup, ProtocolSection,
+    DailyInstance, DailyTask, Protocol, ProtocolChangeLog,
+    ProtocolGroup, ProtocolSection,
 )
 from api.services.daily import get_or_create_daily_instance, refresh_today
 
@@ -162,6 +163,29 @@ def add_protocol(group_id: str):
 def update_protocol(protocol_id: str):
     proto = db.get_or_404(Protocol, protocol_id)
     data = request.get_json()
+
+    tracked_fields = {
+        "label": ("label", str),
+        "subtitle": ("subtitle", str),
+        "scheduled_time": ("scheduled_time", lambda v: v.strftime("%H:%M") if v else None),
+        "document_id": ("document_id", str),
+    }
+
+    for field, (attr, fmt) in tracked_fields.items():
+        if field in data:
+            old_val = getattr(proto, attr)
+            new_val = data[field]
+            old_str = fmt(old_val) if callable(fmt) and old_val is not None else str(old_val) if old_val else None
+            new_str = str(new_val) if new_val else None
+            if old_str != new_str:
+                log = ProtocolChangeLog(
+                    protocol_id=proto.id,
+                    field=field,
+                    old_value=old_str,
+                    new_value=new_str,
+                )
+                db.session.add(log)
+
     if "label" in data:
         proto.label = data["label"]
     if "subtitle" in data:
@@ -184,6 +208,77 @@ def delete_protocol(protocol_id: str):
     db.session.delete(proto)
     _commit_and_refresh()
     return jsonify({"deleted": True})
+
+
+@protocols_bp.route("/protocol/<protocol_id>/detail", methods=["GET"])
+def protocol_detail(protocol_id: str):
+    """Full detail view for a single protocol: history, stats, changes, docs."""
+    proto = db.get_or_404(Protocol, protocol_id)
+
+    # Completion stats from daily tasks
+    tasks = DailyTask.query.filter_by(source_protocol_id=protocol_id).all()
+    total_days = len(tasks)
+    completed_days = sum(1 for t in tasks if t.status == "completed")
+    skipped_days = sum(1 for t in tasks if t.status == "skipped")
+
+    # First appearance (oldest daily task with this source)
+    first_task = (
+        DailyTask.query
+        .filter_by(source_protocol_id=protocol_id)
+        .join(DailyInstance)
+        .order_by(DailyInstance.date.asc())
+        .first()
+    )
+    first_date = first_task.instance.date.isoformat() if first_task and first_task.instance else None
+
+    # Current streak
+    streak = 0
+    if tasks:
+        sorted_tasks = sorted(tasks, key=lambda t: t.instance.date if t.instance else date.min, reverse=True)
+        for t in sorted_tasks:
+            if t.status == "completed":
+                streak += 1
+            else:
+                break
+
+    # Change log
+    changes = [
+        {
+            "field": c.field,
+            "old_value": c.old_value,
+            "new_value": c.new_value,
+            "changed_at": c.changed_at.isoformat() if c.changed_at else None,
+        }
+        for c in proto.change_logs
+    ]
+
+    # Linked document
+    doc_info = None
+    if proto.document and proto.document_id:
+        doc_info = {
+            "id": proto.document.id,
+            "title": proto.document.title,
+        }
+
+    return jsonify({
+        "id": proto.id,
+        "label": proto.label,
+        "subtitle": proto.subtitle,
+        "scheduled_time": proto.scheduled_time.strftime("%H:%M") if proto.scheduled_time else None,
+        "group_name": proto.group.name if proto.group else None,
+        "section_name": proto.group.section.name if proto.group and proto.group.section else None,
+        "created_at": proto.created_at.isoformat() if proto.created_at else None,
+        "first_tracked": first_date,
+        "stats": {
+            "total_days": total_days,
+            "completed_days": completed_days,
+            "skipped_days": skipped_days,
+            "completion_rate": round(completed_days / total_days, 2) if total_days > 0 else 0,
+            "current_streak": streak,
+        },
+        "changes": changes,
+        "document": doc_info,
+    })
 
 
 @protocols_bp.route("/by-document/<document_id>", methods=["GET"])

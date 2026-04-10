@@ -64,6 +64,27 @@ class Protocol(db.Model):
 
     group = db.relationship("ProtocolGroup", back_populates="protocols")
     document = db.relationship("Document")
+    change_logs = db.relationship(
+        "ProtocolChangeLog", back_populates="protocol", cascade="all, delete-orphan",
+        order_by="ProtocolChangeLog.changed_at.desc()",
+    )
+
+
+class ProtocolChangeLog(db.Model):
+    """Tracks changes to a protocol over time (dose changes, renames, etc.)."""
+
+    __tablename__ = "protocol_change_logs"
+
+    id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    protocol_id: str = db.Column(db.String(36), db.ForeignKey("protocols.id"), nullable=False)
+    field: str = db.Column(db.String(50), nullable=False)  # label, subtitle, scheduled_time, document_id, group_id
+    old_value: str = db.Column(db.Text, nullable=True)
+    new_value: str = db.Column(db.Text, nullable=True)
+    changed_at: datetime = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    protocol = db.relationship("Protocol", back_populates="change_logs")
 
 
 # ── Daily Instance ───────────────────────────────────────────────────

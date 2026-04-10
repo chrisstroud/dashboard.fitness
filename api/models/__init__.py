@@ -21,6 +21,7 @@ from api.models.protocol import (  # noqa: E402, F401
     DailyInstance,
     DailyTask,
     Protocol,
+    ProtocolChangeLog,
     ProtocolGroup,
     ProtocolSection,
 )

@@ -24,9 +24,6 @@ struct HomeTab: View {
                     }
                 }
             }
-            .navigationDestination(for: UUID.self) { docId in
-                LinkedDocView(documentId: docId)
-            }
         }
     }
 }
@@ -154,32 +151,38 @@ struct DailyTaskRow: View {
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(task.label)
-                        .font(.subheadline)
-                        .strikethrough(task.status == "completed")
-                        .foregroundStyle(task.status == "completed" ? .secondary : .primary)
-                    if let time = task.scheduledTime {
-                        Text(time)
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Color.blue.opacity(0.1), in: Capsule())
+            NavigationLink {
+                ProtocolDetailView(
+                    protocolId: task.sourceProtocolId ?? "",
+                    label: task.label,
+                    subtitle: task.subtitle,
+                    documentId: task.documentId,
+                    dailyTask: task
+                )
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(task.label)
+                            .font(.subheadline)
+                            .strikethrough(task.status == "completed")
+                            .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                        if let time = task.scheduledTime {
+                            Text(time)
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.1), in: Capsule())
+                        }
+                    }
+                    if let subtitle = task.subtitle {
+                        Text(subtitle).font(.caption).foregroundStyle(.tertiary)
                     }
                 }
-                if let subtitle = task.subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.tertiary)
-                }
-            }
-
-            Spacer()
-
-            if let docId = task.documentId {
-                NavigationLink(value: docId) {
-                    Image(systemName: "doc.text").font(.caption).foregroundStyle(.blue)
-                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal).padding(.leading, 8).padding(.vertical, 5)
