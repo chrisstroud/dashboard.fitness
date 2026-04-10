@@ -12,6 +12,10 @@ struct Dashboard_FitnessApp: App {
             ExerciseLog.self,
             SetLog.self,
             BodyWeight.self,
+            UserProtocol.self,
+            ProtocolItem.self,
+            ProtocolCompletion.self,
+            UserDocument.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

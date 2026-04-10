@@ -4,8 +4,11 @@ import SwiftData
 struct ContentView: View {
     var body: some View {
         TabView {
-            Tab("Workouts", systemImage: "dumbbell") {
-                WorkoutTab()
+            Tab("Home", systemImage: "house") {
+                HomeTab()
+            }
+            Tab("Docs", systemImage: "doc.text") {
+                DocsTab()
             }
             Tab("Metrics", systemImage: "chart.line.uptrend.xyaxis") {
                 MetricsTab()
@@ -20,7 +23,9 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: [
+            UserProtocol.self,
             WorkoutSession.self,
             BodyWeight.self,
+            UserDocument.self,
         ], inMemory: true)
 }
