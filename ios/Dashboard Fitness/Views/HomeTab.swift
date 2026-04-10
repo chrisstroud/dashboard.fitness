@@ -157,53 +157,88 @@ struct WorkoutPicker: View {
 struct WorkoutChipView: View {
     @Bindable var doc: UserDocument
     @Environment(\.modelContext) private var modelContext
+    @State private var showStartConfirm = false
+    @State private var showActiveWorkout = false
 
     private var isDoneToday: Bool { doc.isCompletedToday() }
     private var weekCount: Int { doc.weekCompletionCount() }
     private var weekTarget: Int? { doc.weeklyTarget }
+    private var isThisWorkoutActive: Bool {
+        WorkoutManager.shared.isActive && WorkoutManager.shared.activeDocument?.id == doc.id
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Checkbox
-            Button(action: toggleToday) {
-                Image(systemName: isDoneToday ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(isDoneToday ? .white : chipForeground)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
+        Button(action: chipTapped) {
+            HStack(spacing: 6) {
+                if isThisWorkoutActive {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 8, height: 8)
+                } else {
+                    Image(systemName: isDoneToday ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(isDoneToday ? .white : chipForeground)
+                }
 
-            // Label — taps into doc
-            NavigationLink {
-                DocumentView(document: doc)
-            } label: {
                 Text(doc.title)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(isDoneToday ? .white : chipForeground)
-            }
+                    .foregroundStyle(chipTextColor)
 
-            // Weekly count badge
-            if let target = weekTarget {
-                Text("\(weekCount)/\(target)")
-                    .font(.caption2.bold().monospacedDigit())
-                    .foregroundStyle(isDoneToday ? .white.opacity(0.8) : weekCount >= target ? .green : .secondary)
+                if let target = weekTarget {
+                    Text("\(weekCount)/\(target)")
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(isDoneToday || isThisWorkoutActive ? .white.opacity(0.8) : weekCount >= target ? .green : .secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(chipBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .confirmationDialog("Start Workout", isPresented: $showStartConfirm) {
+            Button("Start \(doc.title)") {
+                WorkoutManager.shared.startWorkout(document: doc)
+                showActiveWorkout = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let duration = doc.durationMinutes {
+                Text("Expected duration: ~\(duration) min")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            isDoneToday
-                ? AnyShapeStyle(Color.green)
-                : AnyShapeStyle(.regularMaterial),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
+        .fullScreenCover(isPresented: $showActiveWorkout) {
+            NavigationStack {
+                ActiveWorkoutView(document: doc)
+            }
+        }
+    }
+
+    private var chipTextColor: Color {
+        (isDoneToday || isThisWorkoutActive) ? .white : chipForeground
+    }
+
+    private var chipBackground: AnyShapeStyle {
+        if isThisWorkoutActive { return AnyShapeStyle(Color.orange) }
+        if isDoneToday { return AnyShapeStyle(Color.green) }
+        return AnyShapeStyle(.regularMaterial)
     }
 
     private var chipForeground: Color {
-        if let target = weekTarget, weekCount >= target {
-            return .secondary
-        }
+        if let target = weekTarget, weekCount >= target { return .secondary }
         return .primary
+    }
+
+    private func chipTapped() {
+        if isThisWorkoutActive {
+            showActiveWorkout = true
+        } else if isDoneToday {
+            // Already done — just open the doc
+            // Could show the doc view here
+        } else if WorkoutManager.shared.isActive {
+            // Another workout is active — don't allow starting a second
+        } else {
+            showStartConfirm = true
+        }
     }
 
     private func toggleToday() {
