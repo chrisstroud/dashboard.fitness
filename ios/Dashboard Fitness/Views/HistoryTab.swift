@@ -218,8 +218,7 @@ struct DayDetailCard: View {
                     .tint(.green)
             }
 
-            let sections = instance.tasksBySection()
-            let allGroups = sections.morning + sections.evening + sections.anytime
+            let allGroups = instance.tasksBySections().flatMap(\.groups)
 
             ForEach(allGroups) { group in
                 HStack(spacing: 8) {

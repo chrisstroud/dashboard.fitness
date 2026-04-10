@@ -18,48 +18,54 @@ final class DailyInstance {
 
     var totalTasks: Int { tasks.count }
     var completedTasks: Int { tasks.filter { $0.status == "completed" }.count }
-    var skippedTasks: Int { tasks.filter { $0.status == "skipped" }.count }
 
     var completionRate: Double {
         guard totalTasks > 0 else { return 0 }
         return Double(completedTasks) / Double(totalTasks)
     }
 
-    func tasksBySection() -> (morning: [TaskGroup], evening: [TaskGroup], anytime: [TaskGroup]) {
-        let sorted = tasks.sorted { ($0.groupPosition, $0.position) < ($1.groupPosition, $1.position) }
+    func tasksBySections() -> [DailySection] {
+        let sorted = tasks.sorted { ($0.sectionPosition, $0.groupPosition, $0.position) < ($1.sectionPosition, $1.groupPosition, $1.position) }
 
-        var groups: [String: TaskGroup] = [:]
+        var sectionMap: [String: DailySection] = [:]
         for task in sorted {
-            let key = "\(task.section):\(task.groupName)"
-            if groups[key] == nil {
-                groups[key] = TaskGroup(name: task.groupName, section: task.section, position: task.groupPosition, tasks: [])
+            if sectionMap[task.sectionName] == nil {
+                sectionMap[task.sectionName] = DailySection(name: task.sectionName, position: task.sectionPosition)
             }
-            groups[key]!.tasks.append(task)
+            let gKey = task.groupName
+            var section = sectionMap[task.sectionName]!
+            if let gIdx = section.groups.firstIndex(where: { $0.name == gKey }) {
+                section.groups[gIdx].tasks.append(task)
+            } else {
+                section.groups.append(DailyGroup(name: gKey, position: task.groupPosition, tasks: [task]))
+            }
+            sectionMap[task.sectionName] = section
         }
 
-        let all = groups.values.sorted { $0.position < $1.position }
-        return (
-            morning: all.filter { $0.section == "morning" },
-            evening: all.filter { $0.section == "evening" },
-            anytime: all.filter { $0.section == "anytime" }
-        )
+        return sectionMap.values.sorted { $0.position < $1.position }
     }
 }
 
-struct TaskGroup: Identifiable {
+struct DailySection: Identifiable {
     let name: String
-    let section: String
+    let position: Int
+    var groups: [DailyGroup] = []
+    var id: String { name }
+
+    var allTasks: [DailyTask] { groups.flatMap(\.tasks) }
+    var allCompleted: Bool { !allTasks.isEmpty && allTasks.allSatisfy { $0.status == "completed" } }
+    var completedCount: Int { allTasks.filter { $0.status == "completed" }.count }
+    var totalCount: Int { allTasks.count }
+}
+
+struct DailyGroup: Identifiable {
+    let name: String
     let position: Int
     var tasks: [DailyTask]
-    var id: String { "\(section):\(name)" }
+    var id: String { name }
 
-    var allCompleted: Bool {
-        !tasks.isEmpty && tasks.allSatisfy { $0.status == "completed" }
-    }
-
-    var completedCount: Int {
-        tasks.filter { $0.status == "completed" }.count
-    }
+    var allCompleted: Bool { !tasks.isEmpty && tasks.allSatisfy { $0.status == "completed" } }
+    var completedCount: Int { tasks.filter { $0.status == "completed" }.count }
 }
 
 @Model
@@ -67,21 +73,23 @@ final class DailyTask {
     @Attribute(.unique) var id: UUID
     var instance: DailyInstance?
     var sourceProtocolId: String?
+    var sectionName: String
+    var sectionPosition: Int
     var groupName: String
-    var section: String
     var groupPosition: Int
     var label: String
     var subtitle: String?
     var position: Int
-    var scheduledTime: String?  // "HH:mm" format
+    var scheduledTime: String?
     var documentId: UUID?
-    var status: String  // pending, completed, skipped
+    var status: String
     var completedAt: Date?
 
-    init(groupName: String, section: String, groupPosition: Int, label: String, position: Int) {
+    init(sectionName: String, sectionPosition: Int, groupName: String, groupPosition: Int, label: String, position: Int) {
         self.id = UUID()
+        self.sectionName = sectionName
+        self.sectionPosition = sectionPosition
         self.groupName = groupName
-        self.section = section
         self.groupPosition = groupPosition
         self.label = label
         self.position = position

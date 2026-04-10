@@ -2,32 +2,43 @@ import Foundation
 import SwiftData
 
 @Model
+final class ProtocolSection {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var position: Int
+
+    @Relationship(deleteRule: .cascade, inverse: \ProtocolGroup.section)
+    var groups: [ProtocolGroup] = []
+
+    init(name: String, position: Int = 0) {
+        self.id = UUID()
+        self.name = name
+        self.position = position
+    }
+
+    var sortedGroups: [ProtocolGroup] {
+        groups.sorted { $0.position < $1.position }
+    }
+}
+
+@Model
 final class ProtocolGroup {
     @Attribute(.unique) var id: UUID
     var name: String
-    var section: String  // morning, evening, anytime
+    var section: ProtocolSection?
     var position: Int
 
     @Relationship(deleteRule: .cascade, inverse: \UserProtocol.group)
     var protocols: [UserProtocol] = []
 
-    init(name: String, section: String = "anytime", position: Int = 0) {
+    init(name: String, position: Int = 0) {
         self.id = UUID()
         self.name = name
-        self.section = section
         self.position = position
     }
 
     var sortedProtocols: [UserProtocol] {
         protocols.sorted { $0.position < $1.position }
-    }
-
-    func allCompleted(on date: Date) -> Bool {
-        !protocols.isEmpty && protocols.allSatisfy { $0.status(on: date) == .completed }
-    }
-
-    func completedCount(on date: Date) -> Int {
-        protocols.filter { $0.status(on: date) == .completed }.count
     }
 }
 
@@ -49,14 +60,6 @@ final class UserProtocol {
         self.subtitle = subtitle
         self.position = position
     }
-
-    func status(on date: Date) -> TaskStatus {
-        let calendar = Calendar.current
-        guard let completion = completions.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) else {
-            return .pending
-        }
-        return TaskStatus(rawValue: completion.status) ?? .pending
-    }
 }
 
 enum TaskStatus: String {
@@ -70,7 +73,7 @@ final class ProtocolCompletion {
     @Attribute(.unique) var id: UUID
     var `protocol`: UserProtocol?
     var date: Date
-    var status: String  // completed, skipped
+    var status: String
     var completedAt: Date
 
     init(date: Date, status: String = "completed") {

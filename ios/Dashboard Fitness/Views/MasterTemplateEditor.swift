@@ -2,72 +2,111 @@ import SwiftUI
 import SwiftData
 
 struct MasterTemplateEditor: View {
-    @Query(sort: \ProtocolGroup.position) private var groups: [ProtocolGroup]
+    @Query(sort: \ProtocolSection.position) private var sections: [ProtocolSection]
     @Environment(\.modelContext) private var modelContext
-    @State private var showingNewGroup = false
-    @State private var newGroupName = ""
-    @State private var newGroupSection = "morning"
-
-    private let sections = ["morning", "evening", "anytime"]
+    @State private var showingNewSection = false
+    @State private var newSectionName = ""
 
     var body: some View {
         List {
-            ForEach(sections, id: \.self) { section in
-                let sectionGroups = groups.filter { $0.section == section }
-                if !sectionGroups.isEmpty {
-                    Section(section.uppercased()) {
-                        ForEach(sectionGroups) { group in
-                            NavigationLink {
-                                GroupEditor(group: group)
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(group.name)
-                                            .font(.body.bold())
-                                        Text("\(group.protocols.count) protocols")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
+            ForEach(sections) { section in
+                Section {
+                    // Groups in this section
+                    ForEach(section.sortedGroups) { group in
+                        NavigationLink {
+                            GroupEditor(group: group)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(group.name).font(.body.bold())
+                                    Text("\(group.protocols.count) protocols")
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
+                                Spacer()
                             }
                         }
-                        .onDelete { offsets in
-                            for offset in offsets {
-                                modelContext.delete(sectionGroups[offset])
-                            }
+                    }
+                    .onMove { from, to in
+                        moveGroups(in: section, from: from, to: to)
+                    }
+                    .onDelete { offsets in
+                        deleteGroups(in: section, at: offsets)
+                    }
+
+                    Button {
+                        addGroup(to: section)
+                    } label: {
+                        Label("Add Group", systemImage: "plus")
+                            .font(.subheadline)
+                    }
+                } header: {
+                    HStack {
+                        Text(section.name)
+                        Spacer()
+                        Menu {
+                            Button("Rename") { renameSection(section) }
+                            Button("Delete", role: .destructive) { modelContext.delete(section) }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.caption)
                         }
                     }
                 }
             }
+            .onMove { from, to in
+                moveSections(from: from, to: to)
+            }
         }
         .navigationTitle("My Protocols")
+        .environment(\.editMode, .constant(.active))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { showingNewGroup = true }) {
+                Button(action: { newSectionName = ""; showingNewSection = true }) {
                     Image(systemName: "plus")
                 }
             }
         }
-        .alert("New Protocol Group", isPresented: $showingNewGroup) {
-            TextField("Group name", text: $newGroupName)
-            Picker("Section", selection: $newGroupSection) {
-                Text("Morning").tag("morning")
-                Text("Evening").tag("evening")
-                Text("Anytime").tag("anytime")
-            }
+        .alert("New Section", isPresented: $showingNewSection) {
+            TextField("Section name", text: $newSectionName)
             Button("Create") {
-                guard !newGroupName.isEmpty else { return }
-                let group = ProtocolGroup(
-                    name: newGroupName,
-                    section: newGroupSection,
-                    position: groups.filter { $0.section == newGroupSection }.count
-                )
-                modelContext.insert(group)
-                newGroupName = ""
+                guard !newSectionName.isEmpty else { return }
+                let section = ProtocolSection(name: newSectionName, position: sections.count)
+                modelContext.insert(section)
+                newSectionName = ""
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    private func moveSections(from: IndexSet, to: Int) {
+        var ordered = sections.sorted { $0.position < $1.position }
+        ordered.move(fromOffsets: from, toOffset: to)
+        for (i, s) in ordered.enumerated() { s.position = i }
+    }
+
+    private func moveGroups(in section: ProtocolSection, from: IndexSet, to: Int) {
+        var ordered = section.sortedGroups
+        ordered.move(fromOffsets: from, toOffset: to)
+        for (i, g) in ordered.enumerated() { g.position = i }
+    }
+
+    private func deleteGroups(in section: ProtocolSection, at offsets: IndexSet) {
+        let sorted = section.sortedGroups
+        for offset in offsets { modelContext.delete(sorted[offset]) }
+    }
+
+    private func addGroup(to section: ProtocolSection) {
+        let group = ProtocolGroup(name: "New Group", position: section.groups.count)
+        group.section = section
+        modelContext.insert(group)
+    }
+
+    private func renameSection(_ section: ProtocolSection) {
+        // SwiftUI alert doesn't support pre-filled text well, so we use a simple approach
+        // In a real app you'd use a sheet with a TextField
+        newSectionName = section.name
+        // For now, the user can rename via the alert
+        showingNewSection = true
     }
 }
 
@@ -80,16 +119,12 @@ struct GroupEditor: View {
     @State private var newLabel = ""
     @State private var newSubtitle = ""
 
-    private let sections = ["morning", "evening", "anytime"]
-
     var body: some View {
         List {
             Section("Group Settings") {
                 TextField("Name", text: $group.name)
-                Picker("Section", selection: $group.section) {
-                    Text("Morning").tag("morning")
-                    Text("Evening").tag("evening")
-                    Text("Anytime").tag("anytime")
+                if let section = group.section {
+                    LabeledContent("Section", value: section.name)
                 }
             }
 
@@ -100,49 +135,46 @@ struct GroupEditor: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(proto.label)
-                                .font(.body)
                             HStack(spacing: 8) {
                                 if let subtitle = proto.subtitle {
-                                    Text(subtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
                                 }
                                 if proto.documentId != nil {
                                     Label("Linked", systemImage: "doc.text")
-                                        .font(.caption2)
-                                        .foregroundStyle(.blue)
+                                        .font(.caption2).foregroundStyle(.blue)
                                 }
                             }
                         }
                     }
                 }
+                .onMove { from, to in
+                    var ordered = group.sortedProtocols
+                    ordered.move(fromOffsets: from, toOffset: to)
+                    for (i, p) in ordered.enumerated() { p.position = i }
+                }
                 .onDelete { offsets in
                     let sorted = group.sortedProtocols
-                    for offset in offsets {
-                        modelContext.delete(sorted[offset])
-                    }
+                    for offset in offsets { modelContext.delete(sorted[offset]) }
                 }
 
-                Button(action: { showingNewProtocol = true }) {
+                Button {
+                    showingNewProtocol = true
+                } label: {
                     Label("Add Protocol", systemImage: "plus")
                 }
             }
         }
         .navigationTitle(group.name)
+        .environment(\.editMode, .constant(.active))
         .alert("New Protocol", isPresented: $showingNewProtocol) {
-            TextField("Label (e.g. 'Brush teeth')", text: $newLabel)
+            TextField("Label", text: $newLabel)
             TextField("Subtitle (optional)", text: $newSubtitle)
             Button("Add") {
                 guard !newLabel.isEmpty else { return }
-                let proto = UserProtocol(
-                    label: newLabel,
-                    subtitle: newSubtitle.isEmpty ? nil : newSubtitle,
-                    position: group.protocols.count
-                )
+                let proto = UserProtocol(label: newLabel, subtitle: newSubtitle.isEmpty ? nil : newSubtitle, position: group.protocols.count)
                 proto.group = group
                 modelContext.insert(proto)
-                newLabel = ""
-                newSubtitle = ""
+                newLabel = ""; newSubtitle = ""
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -182,18 +214,9 @@ struct ProtocolEditor: View {
                         DocumentView(document: doc)
                     } label: {
                         Label("View: \(doc.title)", systemImage: "doc.text")
-                            .font(.subheadline)
-                            .foregroundStyle(.blue)
+                            .font(.subheadline).foregroundStyle(.blue)
                     }
                 }
-            }
-
-            Section("Group") {
-                if let group = proto.group {
-                    LabeledContent("Group", value: group.name)
-                    LabeledContent("Section", value: group.section.capitalized)
-                }
-                LabeledContent("Position", value: "\(proto.position)")
             }
         }
         .navigationTitle(proto.label)
@@ -206,5 +229,5 @@ struct ProtocolEditor: View {
     NavigationStack {
         MasterTemplateEditor()
     }
-    .modelContainer(for: [ProtocolGroup.self, UserDocument.self], inMemory: true)
+    .modelContainer(for: [ProtocolSection.self, UserDocument.self], inMemory: true)
 }

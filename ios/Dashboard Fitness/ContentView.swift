@@ -7,8 +7,10 @@ struct ContentView: View {
             Tab("Today", systemImage: "checkmark.square") {
                 HomeTab()
             }
-            Tab("Docs", systemImage: "doc.text") {
-                DocsTab()
+            Tab("Protocols", systemImage: "list.bullet.rectangle") {
+                NavigationStack {
+                    MasterTemplateEditor()
+                }
             }
             Tab("History", systemImage: "calendar") {
                 HistoryTab()
@@ -24,7 +26,7 @@ struct ContentView: View {
     ContentView()
         .modelContainer(for: [
             DailyInstance.self,
-            ProtocolGroup.self,
+            ProtocolSection.self,
             DocFolder.self,
             UserDocument.self,
         ], inMemory: true)

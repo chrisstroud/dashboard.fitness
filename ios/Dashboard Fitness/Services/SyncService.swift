@@ -61,37 +61,35 @@ final class SyncService {
             }
 
             // Sync tasks
-            let existingTaskIds = Set(instance.tasks.map(\.id))
             var seenTaskIds = Set<UUID>()
 
-            let allTasks = (apiInstance.morning + apiInstance.evening + apiInstance.anytime)
-                .flatMap { group in
-                    group.tasks.map { (group, $0) }
-                }
+            for apiSection in apiInstance.sections {
+                for apiGroup in apiSection.groups {
+                    for apiTask in apiGroup.tasks {
+                        guard let taskId = UUID(uuidString: apiTask.id) else { continue }
+                        seenTaskIds.insert(taskId)
 
-            for (group, apiTask) in allTasks {
-                guard let taskId = UUID(uuidString: apiTask.id) else { continue }
-                seenTaskIds.insert(taskId)
-
-                if let existingTask = instance.tasks.first(where: { $0.id == taskId }) {
-                    existingTask.status = apiTask.status
-                    existingTask.completedAt = nil  // TODO: parse from API
-                } else {
-                    let task = DailyTask(
-                        groupName: group.groupName,
-                        section: group.section,
-                        groupPosition: group.groupPosition,
-                        label: apiTask.label,
-                        position: apiTask.position
-                    )
-                    task.id = taskId
-                    task.subtitle = apiTask.subtitle
-                    task.scheduledTime = apiTask.scheduledTime
-                    task.status = apiTask.status
-                    task.sourceProtocolId = apiTask.sourceProtocolId
-                    if let docId = apiTask.documentId { task.documentId = UUID(uuidString: docId) }
-                    task.instance = instance
-                    modelContext.insert(task)
+                        if let existingTask = instance.tasks.first(where: { $0.id == taskId }) {
+                            existingTask.status = apiTask.status
+                        } else {
+                            let task = DailyTask(
+                                sectionName: apiSection.name,
+                                sectionPosition: apiSection.position,
+                                groupName: apiGroup.groupName,
+                                groupPosition: apiGroup.groupPosition,
+                                label: apiTask.label,
+                                position: apiTask.position
+                            )
+                            task.id = taskId
+                            task.subtitle = apiTask.subtitle
+                            task.scheduledTime = apiTask.scheduledTime
+                            task.status = apiTask.status
+                            task.sourceProtocolId = apiTask.sourceProtocolId
+                            if let docId = apiTask.documentId { task.documentId = UUID(uuidString: docId) }
+                            task.instance = instance
+                            modelContext.insert(task)
+                        }
+                    }
                 }
             }
 
@@ -201,51 +199,96 @@ final class SyncService {
         }
     }
 
-    // MARK: - Protocols
+    // MARK: - Protocols (sections → groups → protocols)
 
     private func syncProtocols(modelContext: ModelContext) async {
         do {
-            let url = baseURL.appendingPathComponent("protocols")
+            let url = baseURL.appendingPathComponent("protocols/sections")
             let (data, response) = try await URLSession.shared.data(from: url)
-
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
-            let apiGroups = try decoder.decode([APIProtocolGroup].self, from: data)
+            let apiSections = try decoder.decode([APISection].self, from: data)
 
-            let existingGroups = try modelContext.fetch(FetchDescriptor<ProtocolGroup>())
-            let existingById = Dictionary(uniqueKeysWithValues: existingGroups.compactMap { g in
-                UUID(uuidString: g.id.uuidString).map { ($0, g) }
+            let existingSections = try modelContext.fetch(FetchDescriptor<ProtocolSection>())
+            let existingSectionById = Dictionary(uniqueKeysWithValues: existingSections.compactMap { s in
+                UUID(uuidString: s.id.uuidString).map { ($0, s) }
             })
 
-            var seenGroupIds = Set<UUID>()
+            var seenSectionIds = Set<UUID>()
 
-            for apiGroup in apiGroups {
-                guard let groupId = UUID(uuidString: apiGroup.id) else { continue }
-                seenGroupIds.insert(groupId)
+            for apiSection in apiSections {
+                guard let sectionId = UUID(uuidString: apiSection.id) else { continue }
+                seenSectionIds.insert(sectionId)
 
-                if let existing = existingById[groupId] {
-                    existing.name = apiGroup.name
-                    existing.section = apiGroup.section
-                    existing.position = apiGroup.position
-                    syncProtocolsInGroup(apiProtocols: apiGroup.protocols, into: existing, modelContext: modelContext)
+                let section: ProtocolSection
+                if let existing = existingSectionById[sectionId] {
+                    existing.name = apiSection.name
+                    existing.position = apiSection.position
+                    section = existing
                 } else {
-                    let newGroup = ProtocolGroup(name: apiGroup.name, section: apiGroup.section, position: apiGroup.position)
-                    newGroup.id = groupId
-                    modelContext.insert(newGroup)
+                    section = ProtocolSection(name: apiSection.name, position: apiSection.position)
+                    section.id = sectionId
+                    modelContext.insert(section)
+                }
+
+                // Sync groups in this section
+                let existingGroupById = Dictionary(uniqueKeysWithValues: section.groups.compactMap { g in
+                    UUID(uuidString: g.id.uuidString).map { ($0, g) }
+                })
+                var seenGroupIds = Set<UUID>()
+
+                for apiGroup in apiSection.groups {
+                    guard let groupId = UUID(uuidString: apiGroup.id) else { continue }
+                    seenGroupIds.insert(groupId)
+
+                    let group: ProtocolGroup
+                    if let existing = existingGroupById[groupId] {
+                        existing.name = apiGroup.name
+                        existing.position = apiGroup.position
+                        group = existing
+                    } else {
+                        group = ProtocolGroup(name: apiGroup.name, position: apiGroup.position)
+                        group.id = groupId
+                        group.section = section
+                        modelContext.insert(group)
+                    }
+
+                    // Sync protocols in this group
+                    let existingProtoById = Dictionary(uniqueKeysWithValues: group.protocols.compactMap { p in
+                        UUID(uuidString: p.id.uuidString).map { ($0, p) }
+                    })
+                    var seenProtoIds = Set<UUID>()
 
                     for apiProto in apiGroup.protocols {
                         guard let protoId = UUID(uuidString: apiProto.id) else { continue }
-                        let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
-                        newProto.id = protoId
-                        newProto.group = newGroup
-                        if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
-                        modelContext.insert(newProto)
+                        seenProtoIds.insert(protoId)
+
+                        if let existing = existingProtoById[protoId] {
+                            existing.label = apiProto.label
+                            existing.subtitle = apiProto.subtitle
+                            existing.position = apiProto.position
+                            if let docId = apiProto.documentId { existing.documentId = UUID(uuidString: docId) }
+                        } else {
+                            let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
+                            newProto.id = protoId
+                            newProto.group = group
+                            if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
+                            modelContext.insert(newProto)
+                        }
                     }
+
+                    for (id, proto) in existingProtoById where !seenProtoIds.contains(id) {
+                        modelContext.delete(proto)
+                    }
+                }
+
+                for (id, group) in existingGroupById where !seenGroupIds.contains(id) {
+                    modelContext.delete(group)
                 }
             }
 
-            for (id, group) in existingById where !seenGroupIds.contains(id) {
-                modelContext.delete(group)
+            for (id, section) in existingSectionById where !seenSectionIds.contains(id) {
+                modelContext.delete(section)
             }
 
             try modelContext.save()
@@ -253,44 +296,20 @@ final class SyncService {
             lastError = (lastError ?? "") + " " + error.localizedDescription
         }
     }
-
-    private func syncProtocolsInGroup(apiProtocols: [APIProtocol], into group: ProtocolGroup, modelContext: ModelContext) {
-        let existingById = Dictionary(uniqueKeysWithValues: group.protocols.compactMap { p in
-            UUID(uuidString: p.id.uuidString).map { ($0, p) }
-        })
-
-        var seenIds = Set<UUID>()
-
-        for apiProto in apiProtocols {
-            guard let protoId = UUID(uuidString: apiProto.id) else { continue }
-            seenIds.insert(protoId)
-
-            if let existing = existingById[protoId] {
-                existing.label = apiProto.label
-                existing.subtitle = apiProto.subtitle
-                existing.position = apiProto.position
-                if let docId = apiProto.documentId { existing.documentId = UUID(uuidString: docId) }
-            } else {
-                let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
-                newProto.id = protoId
-                newProto.group = group
-                if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
-                modelContext.insert(newProto)
-            }
-        }
-
-        for (id, proto) in existingById where !seenIds.contains(id) {
-            modelContext.delete(proto)
-        }
-    }
 }
 
 // MARK: - API Response Types
 
+private struct APISection: Decodable {
+    let id: String
+    let name: String
+    let position: Int
+    let groups: [APIProtocolGroup]
+}
+
 private struct APIProtocolGroup: Decodable {
     let id: String
     let name: String
-    let section: String
     let position: Int
     let protocols: [APIProtocol]
 }
@@ -326,14 +345,17 @@ private struct APIDocumentFull: Decodable {
 private struct APIDailyInstance: Decodable {
     let id: String
     let date: String
-    let morning: [APIDailyGroup]
-    let evening: [APIDailyGroup]
-    let anytime: [APIDailyGroup]
+    let sections: [APIDailySection]
+}
+
+private struct APIDailySection: Decodable {
+    let name: String
+    let position: Int
+    let groups: [APIDailyGroup]
 }
 
 private struct APIDailyGroup: Decodable {
     let groupName: String
-    let section: String
     let groupPosition: Int
     let tasks: [APIDailyTask]
 }

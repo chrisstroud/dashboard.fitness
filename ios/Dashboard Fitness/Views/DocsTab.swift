@@ -217,9 +217,11 @@ struct LinkedProtocolsView: View {
             )
         } else {
             List {
-                ForEach(grouped, id: \.0) { groupName, protocols in
+                ForEach(grouped, id: \.0) { item in
+                    let groupName = item.0
+                    let protos = item.1
                     Section(groupName) {
-                        ForEach(protocols) { proto in
+                        ForEach(protos, id: \.id) { proto in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(proto.label)
                                     .font(.body)
@@ -228,8 +230,8 @@ struct LinkedProtocolsView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                if let section = proto.group?.section {
-                                    Text(section.capitalized)
+                                if let sectionName = proto.group?.section?.name {
+                                    Text(sectionName)
                                         .font(.caption2)
                                         .foregroundStyle(.blue)
                                 }
