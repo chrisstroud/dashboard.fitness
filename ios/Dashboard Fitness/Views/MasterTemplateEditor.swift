@@ -17,7 +17,9 @@ struct MasterTemplateEditor: View {
                 if !sectionGroups.isEmpty {
                     Section(section.uppercased()) {
                         ForEach(sectionGroups) { group in
-                            NavigationLink(value: group) {
+                            NavigationLink {
+                                GroupEditor(group: group)
+                            } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(group.name)
@@ -40,9 +42,6 @@ struct MasterTemplateEditor: View {
             }
         }
         .navigationTitle("My Protocols")
-        .navigationDestination(for: ProtocolGroup.self) { group in
-            GroupEditor(group: group)
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: { showingNewGroup = true }) {
@@ -96,7 +95,9 @@ struct GroupEditor: View {
 
             Section("Protocols (\(group.protocols.count))") {
                 ForEach(group.sortedProtocols) { proto in
-                    NavigationLink(value: proto) {
+                    NavigationLink {
+                        ProtocolEditor(proto: proto)
+                    } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(proto.label)
                                 .font(.body)
@@ -128,9 +129,6 @@ struct GroupEditor: View {
             }
         }
         .navigationTitle(group.name)
-        .navigationDestination(for: UserProtocol.self) { proto in
-            ProtocolEditor(proto: proto)
-        }
         .alert("New Protocol", isPresented: $showingNewProtocol) {
             TextField("Label (e.g. 'Brush teeth')", text: $newLabel)
             TextField("Subtitle (optional)", text: $newSubtitle)
