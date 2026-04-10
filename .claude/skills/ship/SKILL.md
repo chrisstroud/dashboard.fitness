@@ -45,15 +45,16 @@ If there are uncommitted changes, stage and commit them. Use bisectable commit s
 
 | Layer | File Patterns | Commit Prefix |
 |-------|--------------|---------------|
-| **Data** | `data/`, `schemas/` | `feat:` or `fix:` |
-| **Scripts** | `scripts/`, `*.py` (non-test) | `feat:` or `fix:` |
-| **UI** | `index.html`, `*.js`, `*.css`, `manifest.json` | `feat:` or `fix:` |
-| **Config** | `.github/`, `*.yaml` (config), `*.json` (config) | `chore:` or `feat:` |
+| **Data** | `ios/**/Models/`, `api/models/`, `api/migrations/` | `feat:` or `fix:` |
+| **API** | `api/routes/`, `api/services/`, `api/*.py` | `feat:` or `fix:` |
+| **UI** | `ios/**/Views/`, `ios/**/ViewModels/`, `ios/**/*.swift` (non-model) | `feat:` or `fix:` |
+| **Config** | `.github/`, `*.xcconfig`, `*.yaml` (config), `*.json` (config) | `chore:` or `feat:` |
+| **Scripts** | `scripts/`, `data/` | `feat:` or `fix:` |
 | **Docs** | `docs/`, `.claude/skills/` | `docs:` |
 
 **Commit rules:**
 - **Single-layer change** (all files in one layer): One commit.
-- **Multi-layer change** (files across 2+ layers): One commit per layer, in order: Data -> Scripts -> UI -> Config -> Docs.
+- **Multi-layer change** (files across 2+ layers): One commit per layer, in order: Data -> API -> UI -> Config -> Scripts -> Docs.
 - **Small change** (<10 files, all tightly coupled): One commit is fine regardless of layers.
 - Each commit must leave the codebase in a working state.
 - If a story-id is provided, prefix commit messages with `[Story X.Y]`.

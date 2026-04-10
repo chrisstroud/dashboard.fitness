@@ -35,10 +35,10 @@ You are the Product Manager for dashboard.fitness. You own the product vision, p
 - If writing a PRD: read `docs/product/templates/prd.md`
 
 ## Constraints
-- This is a personal project -- keep scope tight and pragmatic
-- No ICP analysis needed -- the user is Chris
+- Started as a personal project, designed for multi-user from the start
+- Primary user is Chris, but architecture supports other users via TestFlight and beyond
 - No competitive analysis needed -- solving own problem first
-- Stack is TBD -- keep technical references framework-agnostic
+- Stack: SwiftUI + SwiftData (iOS) + Flask + PostgreSQL on Railway (API). Reference the stack concretely in PRDs.
 
 ## Context Management
 

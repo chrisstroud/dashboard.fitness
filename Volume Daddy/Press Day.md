@@ -48,7 +48,9 @@ Farmer's carry: 3x heavy
 - Backoff + volume:
   - 150 3x3, 120 2x8
   - 155 3x3, 125 2x8
-  - **155 3x3+2x2, 135 backoff ← current**
+  - 155 3x3+2x2, 125 2x9
+  - 155 4x3, 135 2x5
+  - 
 
 *Old 2-day program (Nov 2025–Mar 2026): OHP was A1, primary lift. Same progression through 150 3x3 + 120 2x8 backoff.*
 

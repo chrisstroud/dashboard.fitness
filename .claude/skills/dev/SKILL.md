@@ -25,12 +25,12 @@ These rules are hard behavioral constraints:
 5. **Read referenced files before modifying them.** Never modify a file you haven't read in this session.
 
 ## Expertise
+- Swift / SwiftUI / SwiftData (iOS app)
+- Flask / SQLAlchemy / Alembic (API backend)
 - Python scripting and automation
-- HTML/CSS/JavaScript (vanilla)
-- YAML/JSON data structures
-- GitHub Actions workflows
-- PWA development
-- Data visualization
+- REST API client/server patterns
+- Offline-first sync (SwiftData as local cache)
+- SwiftUI previews as living mockups
 
 ## Context Loading
 
@@ -39,10 +39,10 @@ These rules are hard behavioral constraints:
 
 ### Phase 2: Domain (load when the task needs it)
 - If context needed beyond the story: read the parent epic from `docs/product/epics/`
-- If data model work: read relevant files in `data/`
-- If script work: read relevant files in `scripts/`
-- If UI work: read `index.html`
-- If workflow work: read `.github/workflows/daily.yml`
+- If SwiftData model work: read relevant files in `ios/DashboardFitness/Models/`
+- If SwiftUI view work: read relevant files in `ios/DashboardFitness/Views/`
+- If Flask API work: read relevant files in `api/routes/`, `api/models/`
+- If data pipeline work: read relevant files in `data/`, `scripts/`
 - If understanding project conventions: read `CLAUDE.md`
 - Read relevant source files mentioned in the story
 
@@ -50,8 +50,20 @@ These rules are hard behavioral constraints:
 - `CLAUDE.md` -- Code conventions section
 
 ## Code Conventions
-- Python: PEP 8, 4-space indent
+
+### Swift (iOS App)
+- SwiftUI declarative patterns, `@Observable` for view models
+- SwiftData `@Model` classes for persistence
+- `async/await` for all network calls
+- One View per file, target 100-300 lines per view
+- Use SwiftUI previews with hardcoded data for every view
+
+### Python (Flask API)
+- PEP 8, 4-space indent
 - Every new function MUST include type hints (`from __future__ import annotations`)
+- SQLAlchemy models + Alembic migrations (never `db.create_all()`)
+
+### Shared
 - YAML: 2-space indent, ISO 8601 dates
 - Target 300-500 lines per module, never exceed 2,000
 - Imperative commit messages
@@ -109,14 +121,14 @@ Follow checkpoint commits -- commit after each stable layer, not just at the end
 ```
 1. Read Story -> Read Referenced Files
      |
-2. Implement Data Layer (data files, schemas)
-   -> Commit: "feat: [Story X.Y] data structures"
+2. Implement Data Layer (SwiftData models, SQLAlchemy models, Alembic migrations)
+   -> Commit: "feat: [Story X.Y] data models"
      |
-3. Implement Script/API Layer (Python scripts, endpoints)
-   -> Commit: "feat: [Story X.Y] generation logic"
+3. Implement API Layer (Flask routes, services, endpoints)
+   -> Commit: "feat: [Story X.Y] API endpoints"
      |
-4. Implement UI Layer (HTML, JS, CSS)
-   -> Commit: "feat: [Story X.Y] dashboard UI"
+4. Implement UI Layer (SwiftUI views, view models)
+   -> Commit: "feat: [Story X.Y] SwiftUI views"
      |
 5. Self-review -> Mark story complete
    -> Commit: "chore: archive Story X.Y"

@@ -7,20 +7,21 @@
 
 ## Purpose
 
-Personal fitness dashboard. Solving my own problem first -- maybe a product one day. Synced via iCloud Drive, edited on iPhone (1Writer), managed on Mac (Obsidian + Claude Code). The dashboard is a GitHub Pages PWA generated daily by GitHub Actions from structured data files.
+Personal fitness app evolving into a multi-user product. Distributed via TestFlight. Native iOS app backed by a Flask API on Railway.
 
 ---
 
 ## Current State
 
-| Layer | What Exists |
-|-------|-------------|
-| **Frontend** | Static PWA (`index.html`) served via GitHub Pages |
-| **Generation** | GitHub Actions daily workflow (`.github/workflows/daily.yml`) |
-| **Data** | YAML/JSON in `data/` (Whoop, weight, bloodwork, schedule) |
-| **Scripts** | Python automation for data sync and schedule generation |
-| **Docs** | Markdown knowledge base (training, nutrition, research, health) |
-| **Framework** | TBD -- no server framework chosen yet |
+| Layer | What Exists | Status |
+|-------|-------------|--------|
+| **iOS App** | Swift + SwiftUI + SwiftData | Planned |
+| **Backend API** | Flask + SQLAlchemy + PostgreSQL on Railway | Planned |
+| **Auth** | Sign in with Apple -> JWT | Planned |
+| **Distribution** | TestFlight | Planned |
+| **Data Pipeline** | YAML/JSON in `data/`, GitHub Actions, Python scripts | Existing |
+| **Docs** | Markdown knowledge base (training, nutrition, research, health) | Existing |
+| **Legacy PWA** | Static `index.html` served via GitHub Pages | Existing (will be superseded by iOS app) |
 
 ---
 
@@ -81,6 +82,7 @@ dashboard.fitness/
   .claude/skills/                   <- Claude Code skills
     pm/SKILL.md                     <- Product Manager
     architect/SKILL.md              <- Technical Architect
+    designer/SKILL.md               <- Designer (SwiftUI previews)
     sm/SKILL.md                     <- Scrum Master
     dev/SKILL.md                    <- Developer
     idea/SKILL.md                   <- Quick Idea Capture
@@ -111,21 +113,34 @@ dashboard.fitness/
 /pm brief [idea]             -> Create product brief
 /pm prd [feature]            -> Write PRD
 /architect design [feature]  -> Design architecture
+/designer preview [feature]  -> SwiftUI preview mockups (UI-heavy features)
 /sm epics                    -> Create epics from PRD
 /sm story [epic-id]          -> Create detailed story
 /dev implement [story-id]    -> Build the feature
 /ship                        -> Push and create PR
 ```
 
-No theme/initiative layer. No sprint infrastructure. Just brief -> prd -> architecture -> epics -> stories -> dev -> ship.
+No theme/initiative layer. No sprint infrastructure. Just brief -> prd -> architecture -> design -> epics -> stories -> dev -> ship.
 
 ---
 
 ## Conventions
 
 ### Code Style
-- Python: PEP 8, 4-space indent
+
+**Swift (iOS App):**
+- SwiftUI declarative patterns
+- `@Observable` for view models, `@Model` for SwiftData
+- `async/await` for networking
+- One View per file, target 100-300 lines per view
+- SwiftUI previews with hardcoded data for every view
+
+**Python (Flask API):**
+- PEP 8, 4-space indent
 - Type hints required on all new functions (`from __future__ import annotations`)
+- SQLAlchemy models + Alembic migrations (never `db.create_all()`)
+
+**Shared:**
 - YAML: 2-space indent, ISO 8601 dates
 - Git: Imperative commit messages
 
@@ -138,10 +153,10 @@ No theme/initiative layer. No sprint infrastructure. Just brief -> prd -> archit
 
 When a change spans multiple layers, commit in this order so `git bisect` works:
 
-1. **Data layer** (models, schemas, data files) -- commit if tests pass
-2. **API layer** (routes, endpoints) -- commit if tests pass
-3. **UI layer** (templates, JS, CSS) -- commit if tests pass
-4. **Config/infra** (settings, workflows) -- commit if tests pass
+1. **Data layer** (SwiftData models, SQLAlchemy models, Alembic migrations) -- commit if tests pass
+2. **API layer** (Flask routes, services, endpoints) -- commit if tests pass
+3. **UI layer** (SwiftUI views, view models) -- commit if tests pass
+4. **Config/infra** (Xcode project, Railway config, scripts, workflows) -- commit if tests pass
 5. **Tests** (new test files only -- test updates go with their layer) -- commit
 6. **Docs** (story status, archive, planning docs) -- separate commit
 
@@ -175,15 +190,20 @@ Each commit must be independently valid. Small changes (single layer, <10 files)
 ## Quick Commands
 
 ```bash
-# Current (static PWA)
-open index.html                       # Preview dashboard locally
+# iOS App
+open ios/DashboardFitness.xcodeproj   # Open in Xcode
+xcodebuild -scheme DashboardFitness   # Build from CLI
+
+# Flask API
+cd api && python app.py               # Start Flask dev server
+cd api && flask db upgrade             # Run migrations
+cd api && flask db migrate -m "desc"   # Create migration
+cd api && python -m pytest tests/ -v   # Run API tests
+
+# Data Pipeline (existing)
 python scripts/schedule.py            # Regenerate schedule data
 ./scripts/sync.sh                     # Sync data from APIs
 git status --short
-
-# Future (framework TBD)
-# python app.py                       # Start dev server
-# python -m pytest tests/ -v          # Run tests
 ```
 
 ---

@@ -16,19 +16,28 @@
 
 ## Data Model
 
-### New Data Structures
+### SwiftData Models (iOS)
 
-{{Describe new data files, schemas, or database tables. Framework/stack TBD -- describe the logical model, not the implementation.}}
+{{On-device models for local caching and offline support.}}
 
+```swift
+// Example
+@Model
+class Workout {
+    var date: Date
+    var type: WorkoutType
+    var exercises: [Exercise]
+    // ...
+}
 ```
-# Example: YAML data structure
-workout:
-  date: 2026-04-03
-  type: upper_a
-  exercises:
-    - name: bench_press
-      sets: [{weight: 225, reps: 5}, ...]
-```
+
+### PostgreSQL Tables (API)
+
+{{Server-side tables -- source of truth for multi-user data.}}
+
+| Table | Columns | Notes |
+|-------|---------|-------|
+| {{table}} | {{columns}} | {{notes}} |
 
 ### Relationships
 
@@ -36,40 +45,55 @@ workout:
 {{relationship_diagram}}
 ```
 
-### Model Changes
+### Migration Notes
 
-| Model/File | Field | Change |
-|------------|-------|--------|
-| {{model}} | {{field}} | Add/Modify/Remove |
+| Layer | Model/Table | Field | Change |
+|-------|-------------|-------|--------|
+| SwiftData | {{model}} | {{field}} | Add/Modify/Remove |
+| PostgreSQL | {{table}} | {{column}} | Add/Modify/Remove |
 
 ---
 
 ## API Design
 
-{{Stack TBD. Describe endpoints by intent. Update with concrete routes when framework is chosen.}}
+Flask JSON API deployed on Railway.
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| {{method}} | {{endpoint}} | {{purpose}} |
+| {{method}} | `/api/{{path}}` | {{purpose}} |
+
+### Authentication
+
+{{How this feature interacts with Sign in with Apple / JWT auth.}}
 
 ---
 
 ## UI Components
 
-| File | Change |
-|------|--------|
-| {{file}} | {{change}} |
+### SwiftUI Views
+
+| View | Purpose |
+|------|---------|
+| {{ViewName}} | {{purpose}} |
 
 ### UI Architecture _(for UI-heavy features -- skip for data-only)_
 
-**Entry points:** {{How the user reaches this feature}}
+**Entry points:** {{Tab, navigation link, sheet, or deeplink}}
 
-**State management:** {{Where state lives -- DOM, JS module, URL params, localStorage}}
+**State management:** {{Where state lives -- @State, @Observable, @Query, @Environment}}
 
-**Component structure:**
+**View hierarchy:**
 ```
-{{component tree}}
+{{view tree, e.g.:
+NavigationStack
+  WorkoutListView
+    WorkoutRowView
+    WorkoutDetailView
+      ExerciseSection
+}}
 ```
+
+**SwiftUI Previews:** {{List preview screens to create with hardcoded data}}
 
 ---
 

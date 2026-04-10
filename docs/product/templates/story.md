@@ -45,15 +45,25 @@
 ### Approach
 {{High-level approach in 2-3 sentences}}
 
+### Layer Sequence
+{{Which layers this story touches and in what order:}}
+1. {{Data layer (SwiftData models / SQLAlchemy models / Alembic migrations)}}
+2. {{API layer (Flask routes / services)}}
+3. {{UI layer (SwiftUI views / view models)}}
+
 ### Step-by-Step
 1. {{First step with details}}
 2. {{Second step with details}}
 3. {{Third step with details}}
 
 ### Code Patterns to Follow
+```swift
+// Reference an existing Swift pattern:
+// From ios/DashboardFitness/Views/ExampleView.swift
 ```
-# Reference an existing pattern in the codebase:
-# From path/file:function_name()
+```python
+# Reference an existing Python pattern:
+# From api/routes/example.py
 ```
 
 ### Gotchas / Watch Out For
@@ -67,10 +77,11 @@
 Architecture constraints, coding patterns, and prior learnings for this story.
 
 ### Architecture Constraints
-- {{Constraint -- e.g., "Must preserve iCloud sync compatibility"}}
+- {{Constraint -- e.g., "SwiftData model must mirror PostgreSQL schema"}}
+- {{Constraint -- e.g., "Must work offline with local SwiftData cache"}}
 
 ### Patterns to Follow
-- {{Pattern -- e.g., "Follow data structure in data/schedule.yaml"}}
+- {{Pattern -- e.g., "Follow APIClient pattern in ios/DashboardFitness/Services/APIClient.swift"}}
 
 ### Previous Learnings
 - {{Learning from prior work relevant to this story}}
@@ -108,6 +119,9 @@ Architecture constraints, coding patterns, and prior learnings for this story.
 ## Definition of Done
 
 - [ ] All acceptance criteria met
-- [ ] Code follows project conventions (PEP 8, type hints, file size limits)
+- [ ] Swift code follows conventions (SwiftUI patterns, type safety)
+- [ ] Python code follows conventions (PEP 8, type hints)
+- [ ] File size limits respected (300-500 lines target, 2,000 max)
+- [ ] SwiftUI previews render correctly with hardcoded data
 - [ ] No obvious bugs
 - [ ] Self-reviewed before PR

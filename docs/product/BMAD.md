@@ -13,6 +13,7 @@ Lightweight BMAD adapted for a solo personal project. No themes, initiatives, sp
 /pm brief [idea]             -> Create product brief
 /pm prd [feature]            -> Write PRD
 /architect design [feature]  -> Design architecture
+/designer preview [feature]  -> SwiftUI preview mockups (for UI-heavy features)
 /sm epics                    -> Create epics from PRD
 /sm story [epic-id]          -> Create detailed story
 /dev implement [story-id]    -> Build the feature
@@ -55,6 +56,10 @@ Brief                    PRD                     Architecture
 docs/product/briefs/  -> docs/product/prd/    -> docs/product/architecture/
                                                        |
                                                        v
+                                               Design (optional, UI-heavy features)
+                                               SwiftUI preview screens with hardcoded data
+                                                       |
+                                                       v
                                                Epics (docs/product/epics/)
                                                        |
                                                        v
@@ -75,6 +80,7 @@ docs/product/briefs/  -> docs/product/prd/    -> docs/product/architecture/
 .claude/skills/              <- Claude Code skills
   pm/SKILL.md                <- Product Manager
   architect/SKILL.md         <- Technical Architect
+  designer/SKILL.md          <- Designer (SwiftUI previews)
   sm/SKILL.md                <- Scrum Master
   dev/SKILL.md               <- Developer
   idea/SKILL.md              <- Quick Idea Capture
@@ -141,6 +147,7 @@ docs/product/
 | Architect | `/architect design [feature]` | Create architecture |
 | Architect | `/architect adr [decision]` | Document architecture decision |
 | Architect | `/architect feasibility [idea]` | Assess feasibility |
+| Designer | `/designer preview [feature]` | SwiftUI preview mockups with hardcoded data |
 | SM | `/sm epics` | Create epics from PRD |
 | SM | `/sm story [epic-id]` | Create next story |
 | SM | `/sm status` | Get development status |
@@ -167,10 +174,11 @@ Uncommitted work is lost if a session crashes or hits a context limit. Commits s
 
 **Checkpoint commits per stable layer.** Commit after each layer passes verification:
 
-1. Data layer (models, schemas, data files) -> commit
-2. API layer (routes, endpoints) -> commit
-3. UI layer (templates, JS, CSS) -> commit
-4. Story completion (status -> Complete, archive to `done/`) -> separate commit
+1. Data layer (SwiftData models, SQLAlchemy models, Alembic migrations) -> commit
+2. API layer (Flask routes, endpoints, services) -> commit
+3. UI layer (SwiftUI views, view models) -> commit
+4. Config/infra (Xcode project settings, Railway config, scripts) -> commit
+5. Story completion (status -> Complete, archive to `done/`) -> separate commit
 
 **Message format:** `feat: [Story X.Y] [layer description]` (or `fix:` for bug fix stories)
 
