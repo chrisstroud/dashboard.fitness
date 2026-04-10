@@ -34,6 +34,7 @@ struct HomeTab: View {
 struct DailyInstanceView: View {
     let instance: DailyInstance
     @State private var collapsedGroups: Set<String> = []
+    @State private var workoutsCollapsed = true
     @State private var hasInitialized = false
 
     var body: some View {
@@ -43,8 +44,10 @@ struct DailyInstanceView: View {
             VStack(alignment: .leading, spacing: 16) {
                 DayHeader(instance: instance)
 
-                WorkoutPicker()
+                // Weekly training (collapsible, same style as protocol groups)
+                WorkoutSection(isCollapsed: $workoutsCollapsed)
 
+                // Protocol sections
                 ForEach(sections) { section in
                     CollapsibleSectionView(
                         section: section,
@@ -61,7 +64,6 @@ struct DailyInstanceView: View {
         .onAppear {
             guard !hasInitialized else { return }
             hasInitialized = true
-            // Default: collapse all groups
             let sections = instance.tasksBySections()
             for section in sections {
                 for group in section.groups {
@@ -123,9 +125,11 @@ struct DayHeader: View {
 
 // MARK: - Workout Picker (checkable chips with weekly progress)
 
-struct WorkoutPicker: View {
+// MARK: - Weekly Training Section (collapsible, matches protocol style)
+
+struct WorkoutSection: View {
     @Query private var allFolders: [DocFolder]
-    @Environment(\.modelContext) private var modelContext
+    @Binding var isCollapsed: Bool
 
     private var workoutDocs: [UserDocument] {
         if let folder = allFolders.first(where: { $0.name.lowercased() == "workouts" }) {
@@ -134,123 +138,167 @@ struct WorkoutPicker: View {
         return []
     }
 
+    private var totalTarget: Int {
+        workoutDocs.compactMap(\.weeklyTarget).reduce(0, +)
+    }
+
+    private var totalDone: Int {
+        workoutDocs.map { $0.weekCompletionCount() }.reduce(0, +)
+    }
+
     var body: some View {
         if !workoutDocs.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("WORKOUT")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                    .tracking(0.8)
-                    .padding(.horizontal, 20)
+            VStack(alignment: .leading, spacing: 0) {
+                // Section header
+                HStack {
+                    Text("WEEKLY TRAINING")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .tracking(0.8)
 
-                FlowLayout(spacing: 8) {
-                    ForEach(workoutDocs) { doc in
-                        WorkoutChipView(doc: doc)
+                    Text("\(totalDone)/\(totalTarget)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+
+                // Collapsible card
+                VStack(alignment: .leading, spacing: 0) {
+                    // Card header
+                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isCollapsed.toggle() } }) {
+                        HStack {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+
+                            Text("Workouts")
+                                .font(.subheadline.weight(.semibold))
+
+                            if totalDone >= totalTarget && totalTarget > 0 {
+                                Image(systemName: "checkmark")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.green)
+                            }
+
+                            Spacer()
+
+                            Text("\(totalDone)/\(totalTarget)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if !isCollapsed {
+                        Divider().padding(.leading, 16)
+
+                        ForEach(workoutDocs) { doc in
+                            WorkoutSlots(doc: doc)
+                        }
                     }
                 }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.horizontal, 16)
             }
         }
     }
 }
 
-struct WorkoutChipView: View {
+// MARK: - Workout Slots (one row per workout, shows frequency)
+
+struct WorkoutSlots: View {
     @Bindable var doc: UserDocument
     @Environment(\.modelContext) private var modelContext
     @State private var showStartConfirm = false
     @State private var showActiveWorkout = false
 
-    private var isDoneToday: Bool { doc.isCompletedToday() }
     private var weekCount: Int { doc.weekCompletionCount() }
-    private var weekTarget: Int? { doc.weeklyTarget }
-    private var isThisWorkoutActive: Bool {
+    private var target: Int { doc.weeklyTarget ?? 1 }
+    private var isThisActive: Bool {
         WorkoutManager.shared.isActive && WorkoutManager.shared.activeDocument?.id == doc.id
     }
 
     var body: some View {
-        Button(action: chipTapped) {
-            HStack(spacing: 6) {
-                if isThisWorkoutActive {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 8, height: 8)
-                } else {
-                    Image(systemName: isDoneToday ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 16))
-                        .foregroundStyle(isDoneToday ? .white : chipForeground)
+        VStack(spacing: 0) {
+            Button(action: rowTapped) {
+                HStack(spacing: 12) {
+                    // Status
+                    Image(systemName: isThisActive ? "flame.fill" : weekCount >= target ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isThisActive ? .orange : weekCount >= target ? .green : Color(.systemGray3))
+
+                    // Label + info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(doc.title)
+                            .font(.body)
+                            .foregroundStyle(weekCount >= target ? .secondary : .primary)
+                            .strikethrough(weekCount >= target, color: .secondary.opacity(0.5))
+
+                        HStack(spacing: 8) {
+                            if let duration = doc.durationMinutes {
+                                Text("\(duration)m")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if isThisActive {
+                                Text("In Progress")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Frequency dots
+                    HStack(spacing: 4) {
+                        ForEach(0..<target, id: \.self) { i in
+                            Circle()
+                                .fill(i < weekCount ? Color.green : Color(.systemGray4))
+                                .frame(width: 8, height: 8)
+                        }
+                    }
                 }
-
-                Text(doc.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(chipTextColor)
-
-                if let target = weekTarget {
-                    Text("\(weekCount)/\(target)")
-                        .font(.caption2.bold().monospacedDigit())
-                        .foregroundStyle(isDoneToday || isThisWorkoutActive ? .white.opacity(0.8) : weekCount >= target ? .green : .secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .confirmationDialog("Start Workout", isPresented: $showStartConfirm) {
+                Button("Start \(doc.title)") {
+                    WorkoutManager.shared.startWorkout(document: doc)
+                    showActiveWorkout = true
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let duration = doc.durationMinutes {
+                    Text("Expected duration: ~\(duration) min")
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(chipBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .confirmationDialog("Start Workout", isPresented: $showStartConfirm) {
-            Button("Start \(doc.title)") {
-                WorkoutManager.shared.startWorkout(document: doc)
-                showActiveWorkout = true
+            .fullScreenCover(isPresented: $showActiveWorkout) {
+                NavigationStack {
+                    ActiveWorkoutView(document: doc)
+                }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if let duration = doc.durationMinutes {
-                Text("Expected duration: ~\(duration) min")
-            }
-        }
-        .fullScreenCover(isPresented: $showActiveWorkout) {
-            NavigationStack {
-                ActiveWorkoutView(document: doc)
-            }
+
+            Divider().padding(.leading, 52)
         }
     }
 
-    private var chipTextColor: Color {
-        (isDoneToday || isThisWorkoutActive) ? .white : chipForeground
-    }
-
-    private var chipBackground: AnyShapeStyle {
-        if isThisWorkoutActive { return AnyShapeStyle(Color.orange) }
-        if isDoneToday { return AnyShapeStyle(Color.green) }
-        return AnyShapeStyle(.regularMaterial)
-    }
-
-    private var chipForeground: Color {
-        if let target = weekTarget, weekCount >= target { return .secondary }
-        return .primary
-    }
-
-    private func chipTapped() {
-        if isThisWorkoutActive {
+    private func rowTapped() {
+        if isThisActive {
             showActiveWorkout = true
-        } else if isDoneToday {
-            // Already done — just open the doc
-            // Could show the doc view here
         } else if WorkoutManager.shared.isActive {
-            // Another workout is active — don't allow starting a second
+            // Another workout active
         } else {
             showStartConfirm = true
-        }
-    }
-
-    private func toggleToday() {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            let calendar = Calendar.current
-            if let existing = doc.completions.first(where: { calendar.isDateInToday($0.date) }) {
-                modelContext.delete(existing)
-            } else {
-                let completion = WorkoutCompletion(date: Date())
-                completion.document = doc
-                modelContext.insert(completion)
-            }
         }
     }
 }
