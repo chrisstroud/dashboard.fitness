@@ -20,7 +20,7 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: [
-            UserProtocol.self,
+            ProtocolGroup.self,
             WorkoutSession.self,
             WorkoutTemplate.self,
             BodyWeight.self,

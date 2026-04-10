@@ -2,14 +2,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class UserProtocol {
+final class ProtocolGroup {
     @Attribute(.unique) var id: UUID
     var name: String
     var section: String  // morning, evening, anytime
     var position: Int
 
-    @Relationship(deleteRule: .cascade, inverse: \ProtocolItem.protocol)
-    var items: [ProtocolItem] = []
+    @Relationship(deleteRule: .cascade, inverse: \UserProtocol.group)
+    var protocols: [UserProtocol] = []
 
     init(name: String, section: String = "anytime", position: Int = 0) {
         self.id = UUID()
@@ -17,19 +17,30 @@ final class UserProtocol {
         self.section = section
         self.position = position
     }
+
+    var sortedProtocols: [UserProtocol] {
+        protocols.sorted { $0.position < $1.position }
+    }
+
+    func allCompleted(on date: Date) -> Bool {
+        !protocols.isEmpty && protocols.allSatisfy { $0.status(on: date) == .completed }
+    }
+
+    func completedCount(on date: Date) -> Int {
+        protocols.filter { $0.status(on: date) == .completed }.count
+    }
 }
 
 @Model
-final class ProtocolItem {
+final class UserProtocol {
     @Attribute(.unique) var id: UUID
-    var `protocol`: UserProtocol?
+    var group: ProtocolGroup?
     var label: String
     var subtitle: String?
     var position: Int
-    var notes: String?
     var documentId: UUID?
 
-    @Relationship(deleteRule: .cascade, inverse: \ProtocolCompletion.item)
+    @Relationship(deleteRule: .cascade, inverse: \ProtocolCompletion.protocol)
     var completions: [ProtocolCompletion] = []
 
     init(label: String, subtitle: String? = nil, position: Int = 0) {
@@ -57,7 +68,7 @@ enum TaskStatus: String {
 @Model
 final class ProtocolCompletion {
     @Attribute(.unique) var id: UUID
-    var item: ProtocolItem?
+    var `protocol`: UserProtocol?
     var date: Date
     var status: String  // completed, skipped
     var completedAt: Date

@@ -12,8 +12,8 @@ struct Dashboard_FitnessApp: App {
             ExerciseLog.self,
             SetLog.self,
             BodyWeight.self,
+            ProtocolGroup.self,
             UserProtocol.self,
-            ProtocolItem.self,
             ProtocolCompletion.self,
             UserDocument.self,
         ])

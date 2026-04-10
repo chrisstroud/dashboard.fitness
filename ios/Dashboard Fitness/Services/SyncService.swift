@@ -34,48 +34,44 @@ final class SyncService {
                 return
             }
 
-            let apiProtocols = try decoder.decode([APIProtocol].self, from: data)
+            let apiGroups = try decoder.decode([APIProtocolGroup].self, from: data)
 
-            // Fetch existing protocols to diff
-            let existingProtocols = try modelContext.fetch(FetchDescriptor<UserProtocol>())
-            let existingById = Dictionary(uniqueKeysWithValues: existingProtocols.compactMap { p in
-                UUID(uuidString: p.id.uuidString).map { ($0, p) }
+            // Fetch existing groups
+            let existingGroups = try modelContext.fetch(FetchDescriptor<ProtocolGroup>())
+            let existingById = Dictionary(uniqueKeysWithValues: existingGroups.compactMap { g in
+                UUID(uuidString: g.id.uuidString).map { ($0, g) }
             })
 
-            var seenIds = Set<UUID>()
+            var seenGroupIds = Set<UUID>()
 
-            for apiProto in apiProtocols {
-                guard let protoId = UUID(uuidString: apiProto.id) else { continue }
-                seenIds.insert(protoId)
+            for apiGroup in apiGroups {
+                guard let groupId = UUID(uuidString: apiGroup.id) else { continue }
+                seenGroupIds.insert(groupId)
 
-                if let existing = existingById[protoId] {
-                    // Update
-                    existing.name = apiProto.name
-                    existing.section = apiProto.section
-                    existing.position = apiProto.position
-                    syncItems(apiItems: apiProto.items, into: existing, modelContext: modelContext)
+                if let existing = existingById[groupId] {
+                    existing.name = apiGroup.name
+                    existing.section = apiGroup.section
+                    existing.position = apiGroup.position
+                    syncProtocolsInGroup(apiProtocols: apiGroup.protocols, into: existing, modelContext: modelContext)
                 } else {
-                    // Insert
-                    let newProto = UserProtocol(name: apiProto.name, section: apiProto.section, position: apiProto.position)
-                    newProto.id = protoId
-                    modelContext.insert(newProto)
+                    let newGroup = ProtocolGroup(name: apiGroup.name, section: apiGroup.section, position: apiGroup.position)
+                    newGroup.id = groupId
+                    modelContext.insert(newGroup)
 
-                    for apiItem in apiProto.items {
-                        guard let itemId = UUID(uuidString: apiItem.id) else { continue }
-                        let newItem = ProtocolItem(label: apiItem.label, subtitle: apiItem.subtitle, position: apiItem.position)
-                        newItem.id = itemId
-                        newItem.protocol = newProto
-                        if let docIdStr = apiItem.documentId {
-                            newItem.documentId = UUID(uuidString: docIdStr)
-                        }
-                        modelContext.insert(newItem)
+                    for apiProto in apiGroup.protocols {
+                        guard let protoId = UUID(uuidString: apiProto.id) else { continue }
+                        let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
+                        newProto.id = protoId
+                        newProto.group = newGroup
+                        if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
+                        modelContext.insert(newProto)
                     }
                 }
             }
 
-            // Delete protocols not in API response
-            for (id, proto) in existingById where !seenIds.contains(id) {
-                modelContext.delete(proto)
+            // Delete groups not in API
+            for (id, group) in existingById where !seenGroupIds.contains(id) {
+                modelContext.delete(group)
             }
 
             try modelContext.save()
@@ -86,57 +82,51 @@ final class SyncService {
         isSyncing = false
     }
 
-    private func syncItems(apiItems: [APIProtocolItem], into proto: UserProtocol, modelContext: ModelContext) {
-        let existingItems = proto.items
-        let existingById = Dictionary(uniqueKeysWithValues: existingItems.compactMap { item in
-            UUID(uuidString: item.id.uuidString).map { ($0, item) }
+    private func syncProtocolsInGroup(apiProtocols: [APIProtocol], into group: ProtocolGroup, modelContext: ModelContext) {
+        let existingById = Dictionary(uniqueKeysWithValues: group.protocols.compactMap { p in
+            UUID(uuidString: p.id.uuidString).map { ($0, p) }
         })
 
         var seenIds = Set<UUID>()
 
-        for apiItem in apiItems {
-            guard let itemId = UUID(uuidString: apiItem.id) else { continue }
-            seenIds.insert(itemId)
+        for apiProto in apiProtocols {
+            guard let protoId = UUID(uuidString: apiProto.id) else { continue }
+            seenIds.insert(protoId)
 
-            if let existing = existingById[itemId] {
-                existing.label = apiItem.label
-                existing.subtitle = apiItem.subtitle
-                existing.position = apiItem.position
-                if let docIdStr = apiItem.documentId {
-                    existing.documentId = UUID(uuidString: docIdStr)
-                }
+            if let existing = existingById[protoId] {
+                existing.label = apiProto.label
+                existing.subtitle = apiProto.subtitle
+                existing.position = apiProto.position
+                if let docId = apiProto.documentId { existing.documentId = UUID(uuidString: docId) }
             } else {
-                let newItem = ProtocolItem(label: apiItem.label, subtitle: apiItem.subtitle, position: apiItem.position)
-                newItem.id = itemId
-                newItem.protocol = proto
-                if let docIdStr = apiItem.documentId {
-                    newItem.documentId = UUID(uuidString: docIdStr)
-                }
-                modelContext.insert(newItem)
+                let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
+                newProto.id = protoId
+                newProto.group = group
+                if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
+                modelContext.insert(newProto)
             }
         }
 
-        for (id, item) in existingById where !seenIds.contains(id) {
-            modelContext.delete(item)
+        for (id, proto) in existingById where !seenIds.contains(id) {
+            modelContext.delete(proto)
         }
     }
 }
 
 // MARK: - API Response Types
 
-private struct APIProtocol: Decodable {
+private struct APIProtocolGroup: Decodable {
     let id: String
     let name: String
     let section: String
     let position: Int
-    let items: [APIProtocolItem]
+    let protocols: [APIProtocol]
 }
 
-private struct APIProtocolItem: Decodable {
+private struct APIProtocol: Decodable {
     let id: String
     let label: String
     let subtitle: String?
     let position: Int
-    let notes: String?
     let documentId: String?
 }

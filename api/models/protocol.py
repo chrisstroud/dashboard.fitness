@@ -6,10 +6,10 @@ from datetime import date, datetime, timezone
 from api.models import db
 
 
-class Protocol(db.Model):
-    """A section of the daily dashboard (e.g. 'Morning', 'Evening', 'Anytime')."""
+class ProtocolGroup(db.Model):
+    """A named group of protocols within a day section (e.g. 'Bathroom', 'Supplements')."""
 
-    __tablename__ = "protocols"
+    __tablename__ = "protocol_groups"
 
     id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: str = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
@@ -20,46 +20,48 @@ class Protocol(db.Model):
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    items = db.relationship(
-        "ProtocolItem", back_populates="protocol", cascade="all, delete-orphan",
-        order_by="ProtocolItem.position",
+    protocols = db.relationship(
+        "Protocol", back_populates="group", cascade="all, delete-orphan",
+        order_by="Protocol.position",
     )
-    user = db.relationship("User", backref="protocols")
+    user = db.relationship("User", backref="protocol_groups")
 
 
-class ProtocolItem(db.Model):
-    """A single task within a protocol, optionally linked to a document."""
+class Protocol(db.Model):
+    """The atomic unit: a single habit/task (e.g. 'Take Boron 10mg')."""
 
-    __tablename__ = "protocol_items"
+    __tablename__ = "protocols"
 
     id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    protocol_id: str = db.Column(db.String(36), db.ForeignKey("protocols.id"), nullable=False)
+    group_id: str = db.Column(db.String(36), db.ForeignKey("protocol_groups.id"), nullable=False)
     label: str = db.Column(db.String(200), nullable=False)
-    subtitle: str = db.Column(db.String(500), nullable=True)  # inline detail (e.g. supplement list)
+    subtitle: str = db.Column(db.String(500), nullable=True)
     position: int = db.Column(db.Integer, nullable=False, default=0)
-    notes: str = db.Column(db.Text, nullable=True)
     document_id: str = db.Column(db.String(36), db.ForeignKey("documents.id"), nullable=True)
+    created_at: datetime = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
-    protocol = db.relationship("Protocol", back_populates="items")
+    group = db.relationship("ProtocolGroup", back_populates="protocols")
     document = db.relationship("Document")
 
 
 class ProtocolCompletion(db.Model):
-    """Tracks task status for a specific date: completed or skipped."""
+    """Tracks completion/skip of a protocol on a specific date."""
 
     __tablename__ = "protocol_completions"
 
     id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: str = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
-    item_id: str = db.Column(db.String(36), db.ForeignKey("protocol_items.id"), nullable=False)
+    protocol_id: str = db.Column(db.String(36), db.ForeignKey("protocols.id"), nullable=False)
     date: date = db.Column(db.Date, nullable=False)
     status: str = db.Column(db.String(20), nullable=False, default="completed")  # completed, skipped
     completed_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    item = db.relationship("ProtocolItem")
+    protocol = db.relationship("Protocol")
 
     __table_args__ = (
-        db.UniqueConstraint("user_id", "item_id", "date", name="uq_completion_per_day"),
+        db.UniqueConstraint("user_id", "protocol_id", "date", name="uq_completion_per_day"),
     )

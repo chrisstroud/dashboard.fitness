@@ -20,6 +20,6 @@ from api.models.metric import BodyWeight  # noqa: E402, F401
 from api.models.protocol import (  # noqa: E402, F401
     Protocol,
     ProtocolCompletion,
-    ProtocolItem,
+    ProtocolGroup,
 )
 from api.models.document import Document  # noqa: E402, F401

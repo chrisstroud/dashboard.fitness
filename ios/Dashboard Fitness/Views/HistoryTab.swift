@@ -8,12 +8,8 @@ struct HistoryTab: View {
     private var activeDates: [Date] {
         let calendar = Calendar.current
         var dates = Set<Date>()
-        for c in allCompletions {
-            dates.insert(calendar.startOfDay(for: c.date))
-        }
-        for s in allSessions {
-            dates.insert(calendar.startOfDay(for: s.date))
-        }
+        for c in allCompletions { dates.insert(calendar.startOfDay(for: c.date)) }
+        for s in allSessions { dates.insert(calendar.startOfDay(for: s.date)) }
         return dates.sorted(by: >)
     }
 
@@ -52,20 +48,14 @@ struct HistoryTab: View {
 
     private func daySummary(for date: Date) -> String {
         let calendar = Calendar.current
-        let completedCount = allCompletions.filter {
-            calendar.isDate($0.date, inSameDayAs: date) && $0.status == "completed"
-        }.count
-        let skippedCount = allCompletions.filter {
-            calendar.isDate($0.date, inSameDayAs: date) && $0.status == "skipped"
-        }.count
-        let sessionCount = allSessions.filter {
-            calendar.isDate($0.date, inSameDayAs: date)
-        }.count
+        let completed = allCompletions.filter { calendar.isDate($0.date, inSameDayAs: date) && $0.status == "completed" }.count
+        let skipped = allCompletions.filter { calendar.isDate($0.date, inSameDayAs: date) && $0.status == "skipped" }.count
+        let sessions = allSessions.filter { calendar.isDate($0.date, inSameDayAs: date) }.count
 
         var parts: [String] = []
-        if completedCount > 0 { parts.append("\(completedCount) done") }
-        if skippedCount > 0 { parts.append("\(skippedCount) skipped") }
-        if sessionCount > 0 { parts.append("\(sessionCount) workout\(sessionCount == 1 ? "" : "s")") }
+        if completed > 0 { parts.append("\(completed) done") }
+        if skipped > 0 { parts.append("\(skipped) skipped") }
+        if sessions > 0 { parts.append("\(sessions) workout\(sessions == 1 ? "" : "s")") }
         return parts.joined(separator: " · ")
     }
 }
@@ -93,7 +83,14 @@ struct DayDetailView: View {
                         HStack(spacing: 10) {
                             Image(systemName: completion.status == "completed" ? "checkmark.circle.fill" : "minus.circle.fill")
                                 .foregroundStyle(completion.status == "completed" ? .green : .orange)
-                            Text(completion.item?.label ?? "Unknown")
+                            VStack(alignment: .leading) {
+                                Text(completion.protocol?.label ?? "Unknown")
+                                if let groupName = completion.protocol?.group?.name {
+                                    Text(groupName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             Spacer()
                             Text(completion.status.capitalized)
                                 .font(.caption)
@@ -108,7 +105,6 @@ struct DayDetailView: View {
                     ForEach(daySessions) { session in
                         HStack {
                             Text(session.template?.name ?? "Workout")
-                                .font(.body)
                             Spacer()
                             if let duration = session.durationMinutes {
                                 Text("\(duration) min")
@@ -126,8 +122,5 @@ struct DayDetailView: View {
 
 #Preview {
     HistoryTab()
-        .modelContainer(for: [
-            ProtocolCompletion.self,
-            WorkoutSession.self,
-        ], inMemory: true)
+        .modelContainer(for: [ProtocolCompletion.self, WorkoutSession.self], inMemory: true)
 }

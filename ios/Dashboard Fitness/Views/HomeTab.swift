@@ -2,19 +2,17 @@ import SwiftUI
 import SwiftData
 
 struct HomeTab: View {
-    @Query(sort: \UserProtocol.position) private var protocols: [UserProtocol]
+    @Query(sort: \ProtocolGroup.position) private var groups: [ProtocolGroup]
     @Environment(\.modelContext) private var modelContext
 
-    private var morningProtocols: [UserProtocol] {
-        protocols.filter { $0.section == "morning" }
+    private var morningGroups: [ProtocolGroup] {
+        groups.filter { $0.section == "morning" }
     }
-
-    private var eveningProtocols: [UserProtocol] {
-        protocols.filter { $0.section == "evening" }
+    private var eveningGroups: [ProtocolGroup] {
+        groups.filter { $0.section == "evening" }
     }
-
-    private var anytimeProtocols: [UserProtocol] {
-        protocols.filter { $0.section == "anytime" }
+    private var anytimeGroups: [ProtocolGroup] {
+        groups.filter { $0.section == "anytime" }
     }
 
     private var todaySessions: [WorkoutSession] {
@@ -42,119 +40,226 @@ struct HomeTab: View {
                             .font(.largeTitle.bold())
                     }
                     .padding(.horizontal)
-                    .padding(.bottom, 20)
-
-                    Divider().padding(.horizontal)
+                    .padding(.bottom, 16)
 
                     // Morning
-                    if !morningProtocols.isEmpty {
-                        DaySectionView(
-                            title: "MORNING",
-                            protocols: morningProtocols
-                        )
+                    if !morningGroups.isEmpty {
+                        SectionHeader(title: "MORNING", groups: morningGroups)
+                        ForEach(morningGroups) { group in
+                            GroupView(group: group)
+                        }
                     }
 
-                    // Workout
+                    // Workout chips
                     WorkoutChipSection(sessions: todaySessions)
 
                     // Evening
-                    if !eveningProtocols.isEmpty {
-                        DaySectionView(
-                            title: "EVENING",
-                            protocols: eveningProtocols
-                        )
+                    if !eveningGroups.isEmpty {
+                        SectionHeader(title: "EVENING", groups: eveningGroups)
+                        ForEach(eveningGroups) { group in
+                            GroupView(group: group)
+                        }
                     }
 
                     // Anytime
-                    if !anytimeProtocols.isEmpty {
-                        DaySectionView(
-                            title: "OTHER",
-                            protocols: anytimeProtocols
-                        )
+                    if !anytimeGroups.isEmpty {
+                        SectionHeader(title: "OTHER", groups: anytimeGroups)
+                        ForEach(anytimeGroups) { group in
+                            GroupView(group: group)
+                        }
                     }
                 }
                 .padding(.vertical)
             }
-            .background(Color(.systemBackground))
         }
     }
 }
 
-// MARK: - Day Section
+// MARK: - Section Header (with bulk complete)
 
-struct DaySectionView: View {
+struct SectionHeader: View {
     let title: String
-    let protocols: [UserProtocol]
+    let groups: [ProtocolGroup]
+    @Environment(\.modelContext) private var modelContext
+
+    private var allProtocols: [UserProtocol] {
+        groups.flatMap(\.protocols)
+    }
+
+    private var allCompleted: Bool {
+        !allProtocols.isEmpty && allProtocols.allSatisfy { $0.status(on: Date()) == .completed }
+    }
+
+    private var completedCount: Int {
+        allProtocols.filter { $0.status(on: Date()) == .completed }.count
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Section header
-            HStack {
-                Text(title)
-                    .font(.caption.bold())
-                    .foregroundStyle(.blue)
-                Spacer()
-                Text("Routine ›")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.blue)
 
-            // Items from all protocols in this section
-            ForEach(protocols) { proto in
-                ForEach(proto.items.sorted(by: { $0.position < $1.position })) { item in
-                    TaskRow(item: item)
+            if !allProtocols.isEmpty {
+                Text("\(completedCount)/\(allProtocols.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: toggleSection) {
+                Image(systemName: allCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                    .foregroundStyle(allCompleted ? .green : .secondary)
+                    .font(.body)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 20)
+        .padding(.bottom, 4)
+    }
+
+    private func toggleSection() {
+        let today = Date()
+        let calendar = Calendar.current
+
+        if allCompleted {
+            // Clear all
+            for proto in allProtocols {
+                if let existing = proto.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) }) {
+                    modelContext.delete(existing)
+                }
+            }
+        } else {
+            // Complete all
+            for proto in allProtocols where proto.status(on: today) != .completed {
+                let existing = proto.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) })
+                if let existing {
+                    existing.status = "completed"
+                    existing.completedAt = Date()
+                } else {
+                    let completion = ProtocolCompletion(date: today, status: "completed")
+                    completion.protocol = proto
+                    modelContext.insert(completion)
                 }
             }
         }
     }
 }
 
-// MARK: - Task Row
+// MARK: - Group View (with group-level complete)
 
-struct TaskRow: View {
-    let item: ProtocolItem
+struct GroupView: View {
+    let group: ProtocolGroup
+    @Environment(\.modelContext) private var modelContext
+
+    private var allCompleted: Bool {
+        group.allCompleted(on: Date())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Group header
+            HStack {
+                Text(group.name)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.primary)
+
+                Text("\(group.completedCount(on: Date()))/\(group.protocols.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button(action: toggleGroup) {
+                    Image(systemName: allCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(allCompleted ? .green : .secondary)
+                        .font(.callout)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+
+            // Protocol items
+            ForEach(group.sortedProtocols) { proto in
+                ProtocolRow(proto: proto)
+            }
+        }
+    }
+
+    private func toggleGroup() {
+        let today = Date()
+        let calendar = Calendar.current
+
+        if allCompleted {
+            for proto in group.protocols {
+                if let existing = proto.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) }) {
+                    modelContext.delete(existing)
+                }
+            }
+        } else {
+            for proto in group.protocols where proto.status(on: today) != .completed {
+                let existing = proto.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) })
+                if let existing {
+                    existing.status = "completed"
+                    existing.completedAt = Date()
+                } else {
+                    let completion = ProtocolCompletion(date: today, status: "completed")
+                    completion.protocol = proto
+                    modelContext.insert(completion)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Protocol Row (atomic unit)
+
+struct ProtocolRow: View {
+    let proto: UserProtocol
     @Environment(\.modelContext) private var modelContext
 
     private var currentStatus: TaskStatus {
-        item.status(on: Date())
+        proto.status(on: Date())
     }
 
     var body: some View {
-        Button(action: cycleStatus) {
-            HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
+            Button(action: cycleStatus) {
                 statusIcon
-                    .font(.title3)
-                    .frame(width: 24)
+                    .font(.body)
+                    .frame(width: 22)
+            }
+            .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.label)
-                        .font(.body)
-                        .fontWeight(.medium)
-                        .strikethrough(currentStatus == .completed)
-                        .foregroundStyle(currentStatus == .completed ? .secondary : .primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(proto.label)
+                    .font(.subheadline)
+                    .strikethrough(currentStatus == .completed)
+                    .foregroundStyle(currentStatus == .completed ? .secondary : .primary)
 
-                    if let subtitle = item.subtitle {
-                        Text(subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                if item.documentId != nil {
-                    Image(systemName: "chevron.right")
+                if let subtitle = proto.subtitle {
+                    Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+
+            Spacer()
+
+            if proto.documentId != nil {
+                NavigationLink(value: proto.documentId!) {
+                    Image(systemName: "doc.text")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.leading, 8)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -175,13 +280,12 @@ struct TaskRow: View {
     private func cycleStatus() {
         let calendar = Calendar.current
         let today = Date()
-
-        let existing = item.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) })
+        let existing = proto.completions.first(where: { calendar.isDate($0.date, inSameDayAs: today) })
 
         switch currentStatus {
         case .pending:
             let completion = ProtocolCompletion(date: today, status: "completed")
-            completion.item = item
+            completion.protocol = proto
             modelContext.insert(completion)
         case .completed:
             if let existing {
@@ -200,8 +304,6 @@ struct TaskRow: View {
 
 struct WorkoutChipSection: View {
     let sessions: [WorkoutSession]
-    @Query(sort: \WorkoutTemplate.name) private var templates: [WorkoutTemplate]
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -215,7 +317,7 @@ struct WorkoutChipSection: View {
                     .foregroundStyle(.blue)
             }
             .padding(.horizontal)
-            .padding(.top, 16)
+            .padding(.top, 20)
 
             if !sessions.isEmpty {
                 ForEach(sessions) { session in
@@ -223,7 +325,6 @@ struct WorkoutChipSection: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                         Text(session.template?.name ?? "Workout")
-                            .font(.body)
                         Spacer()
                         if let duration = session.durationMinutes {
                             Text("\(duration)m")
@@ -236,7 +337,6 @@ struct WorkoutChipSection: View {
                 }
             }
 
-            // Template chips
             let chipNames = [
                 "Bench Day", "Squat Day", "Press Day", "Hinge Day",
                 "Zone 2", "Zone 2", "Zone 2", "Zone 2", "HIIT"
@@ -255,6 +355,7 @@ struct WorkoutChipSection: View {
                 }
             }
             .padding(.horizontal)
+            .padding(.bottom, 8)
         }
     }
 }
@@ -265,8 +366,7 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = layout(proposal: proposal, subviews: subviews)
-        return result.size
+        layout(proposal: proposal, subviews: subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -302,7 +402,7 @@ struct FlowLayout: Layout {
 #Preview {
     HomeTab()
         .modelContainer(for: [
-            UserProtocol.self,
+            ProtocolGroup.self,
             WorkoutSession.self,
             WorkoutTemplate.self,
         ], inMemory: true)
