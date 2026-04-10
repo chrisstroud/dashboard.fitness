@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from api.models import db
+from models import db
 
 
 class User(db.Model):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from api.models import db
+from models import db
 
 
 class WorkoutSession(db.Model):

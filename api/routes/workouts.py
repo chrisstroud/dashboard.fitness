@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
-from api.models.workout import Exercise, WorkoutTemplate, WorkoutTemplateExercise
+from models import db
+from models.workout import Exercise, WorkoutTemplate, WorkoutTemplateExercise
 
 workouts_bp = Blueprint("workouts", __name__)
 

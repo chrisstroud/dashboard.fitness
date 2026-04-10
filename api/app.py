@@ -4,8 +4,8 @@ from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
 
-from api.config import Config
-from api.models import db
+from config import Config
+from models import db
 
 
 migrate = Migrate()
@@ -16,16 +16,16 @@ def create_app(config_class: type = Config) -> Flask:
     app.config.from_object(config_class)
 
     db.init_app(app)
-    migrate.init_app(app, db, directory="api/migrations")
+    migrate.init_app(app, db, directory="migrations")
     CORS(app)
 
-    from api.routes.health import health_bp
-    from api.routes.workouts import workouts_bp
-    from api.routes.sessions import sessions_bp
-    from api.routes.metrics import metrics_bp
-    from api.routes.protocols import protocols_bp
-    from api.routes.documents import documents_bp
-    from api.routes.users import users_bp
+    from routes.health import health_bp
+    from routes.workouts import workouts_bp
+    from routes.sessions import sessions_bp
+    from routes.metrics import metrics_bp
+    from routes.protocols import protocols_bp
+    from routes.documents import documents_bp
+    from routes.users import users_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(workouts_bp, url_prefix="/api/workouts")

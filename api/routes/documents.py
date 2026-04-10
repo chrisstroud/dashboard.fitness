@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
+from models import db
 from datetime import date, timedelta
 
-from api.models.document import Document, Folder, WorkoutCompletion
+from models.document import Document, Folder, WorkoutCompletion
 
 documents_bp = Blueprint("documents", __name__)
 

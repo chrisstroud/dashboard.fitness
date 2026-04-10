@@ -4,7 +4,7 @@
     {
       "name": "flask-api",
       "runtimeExecutable": "api/.venv/bin/python3",
-      "runtimeArgs": ["-m", "flask", "--app", "api.app:create_app", "run", "--port", "5001", "--debug"],
+      "runtimeArgs": ["-m", "flask", "--app", "app:create_app", "run", "--port", "5001", "--debug"],
       "port": 5001
     }
   ]

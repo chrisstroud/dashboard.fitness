@@ -4,12 +4,12 @@ from datetime import date, time
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
-from api.models.protocol import (
+from models import db
+from models.protocol import (
     DailyInstance, DailyTask, Protocol, ProtocolChangeLog,
     ProtocolGroup, ProtocolSection,
 )
-from api.services.daily import get_or_create_daily_instance, refresh_today
+from services.daily import get_or_create_daily_instance, refresh_today
 
 protocols_bp = Blueprint("protocols", __name__)
 

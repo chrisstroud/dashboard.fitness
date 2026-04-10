@@ -4,8 +4,8 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from api.models import db
-from api.models.protocol import DailyInstance, DailyTask, ProtocolSection
+from models import db
+from models.protocol import DailyInstance, DailyTask, ProtocolSection
 
 
 def get_or_create_daily_instance(user_id: str, target_date: date) -> DailyInstance:

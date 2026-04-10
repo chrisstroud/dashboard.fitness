@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
-from api.models.user import User
+from models import db
+from models.user import User
 
 users_bp = Blueprint("users", __name__)
 

@@ -4,8 +4,8 @@ from datetime import date
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
-from api.models.metric import BodyWeight
+from models import db
+from models.metric import BodyWeight
 
 metrics_bp = Blueprint("metrics", __name__)
 

@@ -4,8 +4,8 @@ from datetime import date
 
 from flask import Blueprint, jsonify, request
 
-from api.models import db
-from api.models.session import ExerciseLog, SetLog, WorkoutSession
+from models import db
+from models.session import ExerciseLog, SetLog, WorkoutSession
 
 sessions_bp = Blueprint("sessions", __name__)
 
