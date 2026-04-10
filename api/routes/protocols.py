@@ -8,11 +8,17 @@ from api.models import db
 from api.models.protocol import (
     DailyInstance, DailyTask, Protocol, ProtocolGroup, ProtocolSection,
 )
-from api.services.daily import get_or_create_daily_instance
+from api.services.daily import get_or_create_daily_instance, refresh_today
 
 protocols_bp = Blueprint("protocols", __name__)
 
 TEMP_USER_ID = "chris"
+
+
+def _commit_and_refresh():
+    """Commit DB changes and refresh today's daily instance to match master."""
+    db.session.commit()
+    refresh_today(TEMP_USER_ID)
 
 
 # ── Sections CRUD ────────────────────────────────────────────────────
@@ -38,7 +44,7 @@ def create_section():
         position=data.get("position", count),
     )
     db.session.add(section)
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": section.id, "name": section.name}), 201
 
 
@@ -50,7 +56,7 @@ def update_section(section_id: str):
         section.name = data["name"]
     if "position" in data:
         section.position = data["position"]
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": section.id, "name": section.name})
 
 
@@ -58,7 +64,7 @@ def update_section(section_id: str):
 def delete_section(section_id: str):
     section = db.get_or_404(ProtocolSection, section_id)
     db.session.delete(section)
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"deleted": True})
 
 
@@ -69,7 +75,7 @@ def reorder_sections():
         section = ProtocolSection.query.get(item["id"])
         if section:
             section.position = item["position"]
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"reordered": True})
 
 
@@ -95,7 +101,7 @@ def create_group(section_id: str):
         )
         db.session.add(proto)
 
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": group.id, "name": group.name}), 201
 
 
@@ -109,7 +115,7 @@ def update_group(group_id: str):
         group.position = data["position"]
     if "section_id" in data:
         group.section_id = data["section_id"]
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": group.id, "name": group.name})
 
 
@@ -117,7 +123,7 @@ def update_group(group_id: str):
 def delete_group(group_id: str):
     group = db.get_or_404(ProtocolGroup, group_id)
     db.session.delete(group)
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"deleted": True})
 
 
@@ -130,7 +136,7 @@ def reorder_groups():
             group.position = item["position"]
             if "section_id" in item:
                 group.section_id = item["section_id"]
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"reordered": True})
 
 
@@ -148,7 +154,7 @@ def add_protocol(group_id: str):
         document_id=data.get("document_id"),
     )
     db.session.add(proto)
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": proto.id, "label": proto.label}), 201
 
 
@@ -168,7 +174,7 @@ def update_protocol(protocol_id: str):
         proto.scheduled_time = _parse_time(data.get("scheduled_time"))
     if "group_id" in data:
         proto.group_id = data["group_id"]
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"id": proto.id, "label": proto.label})
 
 
@@ -176,7 +182,7 @@ def update_protocol(protocol_id: str):
 def delete_protocol(protocol_id: str):
     proto = db.get_or_404(Protocol, protocol_id)
     db.session.delete(proto)
-    db.session.commit()
+    _commit_and_refresh()
     return jsonify({"deleted": True})
 
 
