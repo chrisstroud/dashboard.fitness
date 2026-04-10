@@ -131,42 +131,111 @@ struct FolderView: View {
     }
 }
 
-// MARK: - Document View (read + edit with markdown rendering)
+// MARK: - Document View (content + linked protocols)
 
 struct DocumentView: View {
     @Bindable var document: UserDocument
+    @State private var selectedTab = 0
     @State private var isEditing = false
 
     var body: some View {
-        Group {
-            if isEditing {
-                TextEditor(text: $document.content)
-                    .font(.body.monospaced())
-                    .padding(.horizontal, 4)
-            } else {
-                ScrollView {
-                    if document.content.isEmpty {
-                        ContentUnavailableView(
-                            "Empty Document",
-                            systemImage: "doc.text",
-                            description: Text("Tap Edit to start writing")
-                        )
-                    } else {
-                        MarkdownView(content: document.content)
-                            .padding()
+        VStack(spacing: 0) {
+            // Tab picker
+            Picker("View", selection: $selectedTab) {
+                Text("Content").tag(0)
+                Text("Protocols").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+
+            if selectedTab == 0 {
+                // Content tab
+                if isEditing {
+                    TextEditor(text: $document.content)
+                        .font(.body.monospaced())
+                        .padding(.horizontal, 4)
+                } else {
+                    ScrollView {
+                        if document.content.isEmpty {
+                            ContentUnavailableView(
+                                "Empty Document",
+                                systemImage: "doc.text",
+                                description: Text("Tap Edit to start writing")
+                            )
+                        } else {
+                            MarkdownView(content: document.content)
+                                .padding()
+                        }
                     }
                 }
+            } else {
+                // Linked protocols tab
+                LinkedProtocolsView(documentId: document.id)
             }
         }
         .navigationTitle(document.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(isEditing ? "Done" : "Edit") {
-                    if isEditing {
-                        document.updatedAt = Date()
+            if selectedTab == 0 {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(isEditing ? "Done" : "Edit") {
+                        if isEditing {
+                            document.updatedAt = Date()
+                        }
+                        isEditing.toggle()
                     }
-                    isEditing.toggle()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Linked Protocols View
+
+struct LinkedProtocolsView: View {
+    let documentId: UUID
+    @Query(sort: \UserProtocol.position) private var allProtocols: [UserProtocol]
+
+    private var linkedProtocols: [UserProtocol] {
+        allProtocols.filter { $0.documentId == documentId }
+    }
+
+    private var grouped: [(String, [UserProtocol])] {
+        let dict = Dictionary(grouping: linkedProtocols) { proto in
+            proto.group?.name ?? "Ungrouped"
+        }
+        return dict.sorted { $0.key < $1.key }
+    }
+
+    var body: some View {
+        if linkedProtocols.isEmpty {
+            ContentUnavailableView(
+                "No Linked Protocols",
+                systemImage: "link",
+                description: Text("No protocols reference this document yet.\nLink protocols in Settings → My Protocols.")
+            )
+        } else {
+            List {
+                ForEach(grouped, id: \.0) { groupName, protocols in
+                    Section(groupName) {
+                        ForEach(protocols) { proto in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(proto.label)
+                                    .font(.body)
+                                if let subtitle = proto.subtitle {
+                                    Text(subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let section = proto.group?.section {
+                                    Text(section.capitalized)
+                                        .font(.caption2)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

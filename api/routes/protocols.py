@@ -57,6 +57,97 @@ def create_group():
     return jsonify({"id": group.id, "name": group.name}), 201
 
 
+@protocols_bp.route("/<group_id>", methods=["PUT"])
+def update_group(group_id: str):
+    group = db.get_or_404(ProtocolGroup, group_id)
+    data = request.get_json()
+    if "name" in data:
+        group.name = data["name"]
+    if "section" in data:
+        group.section = data["section"]
+    if "position" in data:
+        group.position = data["position"]
+    db.session.commit()
+    return jsonify({"id": group.id, "name": group.name})
+
+
+@protocols_bp.route("/<group_id>", methods=["DELETE"])
+def delete_group(group_id: str):
+    group = db.get_or_404(ProtocolGroup, group_id)
+    db.session.delete(group)
+    db.session.commit()
+    return jsonify({"deleted": True})
+
+
+@protocols_bp.route("/<group_id>/protocols", methods=["POST"])
+def add_protocol(group_id: str):
+    group = db.get_or_404(ProtocolGroup, group_id)
+    data = request.get_json()
+
+    scheduled = None
+    if data.get("scheduled_time"):
+        parts = data["scheduled_time"].split(":")
+        scheduled = time(int(parts[0]), int(parts[1]))
+
+    proto = Protocol(
+        group=group,
+        label=data["label"],
+        subtitle=data.get("subtitle"),
+        position=data.get("position", len(group.protocols)),
+        scheduled_time=scheduled,
+        document_id=data.get("document_id"),
+    )
+    db.session.add(proto)
+    db.session.commit()
+    return jsonify({"id": proto.id, "label": proto.label}), 201
+
+
+@protocols_bp.route("/protocol/<protocol_id>", methods=["PUT"])
+def update_protocol(protocol_id: str):
+    proto = db.get_or_404(Protocol, protocol_id)
+    data = request.get_json()
+    if "label" in data:
+        proto.label = data["label"]
+    if "subtitle" in data:
+        proto.subtitle = data["subtitle"]
+    if "position" in data:
+        proto.position = data["position"]
+    if "document_id" in data:
+        proto.document_id = data["document_id"]
+    if "scheduled_time" in data:
+        if data["scheduled_time"]:
+            parts = data["scheduled_time"].split(":")
+            proto.scheduled_time = time(int(parts[0]), int(parts[1]))
+        else:
+            proto.scheduled_time = None
+    db.session.commit()
+    return jsonify({"id": proto.id, "label": proto.label})
+
+
+@protocols_bp.route("/protocol/<protocol_id>", methods=["DELETE"])
+def delete_protocol(protocol_id: str):
+    proto = db.get_or_404(Protocol, protocol_id)
+    db.session.delete(proto)
+    db.session.commit()
+    return jsonify({"deleted": True})
+
+
+@protocols_bp.route("/by-document/<document_id>", methods=["GET"])
+def protocols_by_document(document_id: str):
+    """Get all protocols linked to a specific document."""
+    protocols = Protocol.query.filter_by(document_id=document_id).all()
+    return jsonify([
+        {
+            "id": p.id,
+            "label": p.label,
+            "subtitle": p.subtitle,
+            "group_name": p.group.name if p.group else None,
+            "section": p.group.section if p.group else None,
+        }
+        for p in protocols
+    ])
+
+
 def _serialize_group(g: ProtocolGroup) -> dict:
     return {
         "id": g.id,

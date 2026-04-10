@@ -17,6 +17,17 @@ struct SettingsTab: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Protocols") {
+                    NavigationLink {
+                        MasterTemplateEditor()
+                    } label: {
+                        Label("My Protocols", systemImage: "list.bullet.rectangle")
+                    }
+                    Text("Edit your daily routine template. Changes take effect tomorrow.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Profile") {
                     TextField("Display Name", text: $displayName)
                     TextField("Email", text: $email)
