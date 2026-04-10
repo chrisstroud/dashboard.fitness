@@ -29,6 +29,10 @@ struct Dashboard_FitnessApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .task {
+                    let context = sharedModelContainer.mainContext
+                    await SyncService.shared.syncProtocols(modelContext: context)
+                }
         }
         .modelContainer(sharedModelContainer)
     }
