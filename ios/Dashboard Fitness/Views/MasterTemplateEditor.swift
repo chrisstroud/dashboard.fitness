@@ -58,8 +58,10 @@ struct MasterTemplateEditor: View {
             }
         }
         .navigationTitle("My Protocols")
-        .environment(\.editMode, .constant(.active))
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                EditButton()
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button(action: { newSectionName = ""; showingNewSection = true }) {
                     Image(systemName: "plus")
@@ -170,7 +172,11 @@ struct GroupEditor: View {
             }
         }
         .navigationTitle(group.name)
-        .environment(\.editMode, .constant(.active))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                EditButton()
+            }
+        }
         .alert("New Protocol", isPresented: $showingNewProtocol) {
             TextField("Label", text: $newLabel)
             TextField("Subtitle (optional)", text: $newSubtitle)
