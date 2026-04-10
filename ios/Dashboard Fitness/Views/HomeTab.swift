@@ -123,12 +123,20 @@ struct DayHeader: View {
     }
 }
 
-// MARK: - Workout Picker
+// MARK: - Workout Picker (wrapped chip grid, linked to docs)
 
 struct WorkoutPicker: View {
     @Binding var selectedWorkouts: Set<String>
+    @Query private var allFolders: [DocFolder]
+    @Query private var allDocs: [UserDocument]
 
-    private let workouts = ["Bench Day", "Squat Day", "Press Day", "Hinge Day", "Zone 2", "HIIT"]
+    private var workoutDocs: [UserDocument] {
+        // Find docs in a folder named "Workouts"
+        if let folder = allFolders.first(where: { $0.name.lowercased() == "workouts" }) {
+            return folder.sortedDocuments
+        }
+        return []
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -146,14 +154,20 @@ struct WorkoutPicker: View {
             }
             .padding(.horizontal, 20)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(workouts, id: \.self) { name in
-                        WorkoutChip(
-                            name: name,
-                            isSelected: selectedWorkouts.contains(name),
-                            action: { toggleWorkout(name) }
-                        )
+            if workoutDocs.isEmpty {
+                Text("Add workout docs to a \"Workouts\" folder in Docs")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 20)
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(workoutDocs) { doc in
+                        WorkoutDocChip(
+                            doc: doc,
+                            isSelected: selectedWorkouts.contains(doc.id.uuidString)
+                        ) {
+                            toggleWorkout(doc.id.uuidString)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -161,30 +175,32 @@ struct WorkoutPicker: View {
         }
     }
 
-    private func toggleWorkout(_ name: String) {
+    private func toggleWorkout(_ id: String) {
         withAnimation(.easeInOut(duration: 0.15)) {
-            if selectedWorkouts.contains(name) {
-                selectedWorkouts.remove(name)
+            if selectedWorkouts.contains(id) {
+                selectedWorkouts.remove(id)
             } else {
-                selectedWorkouts.insert(name)
+                selectedWorkouts.insert(id)
             }
         }
     }
 }
 
-struct WorkoutChip: View {
-    let name: String
+struct WorkoutDocChip: View {
+    let doc: UserDocument
     let isSelected: Bool
-    let action: () -> Void
+    let toggle: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        NavigationLink {
+            DocumentView(document: doc)
+        } label: {
             HStack(spacing: 5) {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.caption2.bold())
                 }
-                Text(name)
+                Text(doc.title)
                     .font(.subheadline.weight(.medium))
             }
             .padding(.horizontal, 14)
@@ -197,7 +213,7 @@ struct WorkoutChip: View {
             )
             .foregroundStyle(isSelected ? .white : .primary)
         }
-        .buttonStyle(.plain)
+        .simultaneousGesture(LongPressGesture().onEnded { _ in toggle() })
     }
 }
 

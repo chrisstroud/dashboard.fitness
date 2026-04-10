@@ -21,17 +21,17 @@ struct SettingsTab: View {
             Form {
                 Section {
                     NavigationLink {
-                        DocsTab()
+                        MasterTemplateEditor()
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("My Documents")
-                                Text("Reference docs, notes, research")
+                                Text("My Protocols")
+                                Text("Edit your daily routine template")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         } icon: {
-                            Image(systemName: "folder.fill")
+                            Image(systemName: "list.bullet.rectangle.fill")
                                 .foregroundStyle(.blue)
                         }
                     }

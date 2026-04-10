@@ -7,10 +7,8 @@ struct ContentView: View {
             Tab("Today", systemImage: "checkmark.square") {
                 HomeTab()
             }
-            Tab("Protocols", systemImage: "list.bullet.rectangle") {
-                NavigationStack {
-                    MasterTemplateEditor()
-                }
+            Tab("Docs", systemImage: "doc.text") {
+                DocsTab()
             }
             Tab("History", systemImage: "calendar") {
                 HistoryTab()
