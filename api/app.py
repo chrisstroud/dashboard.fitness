@@ -16,7 +16,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.config.from_object(config_class)
 
     db.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db, directory="api/migrations")
     CORS(app)
 
     from api.routes.health import health_bp
