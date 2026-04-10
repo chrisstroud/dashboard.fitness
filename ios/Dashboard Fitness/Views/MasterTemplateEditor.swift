@@ -131,7 +131,12 @@ struct GroupEditor: View {
             Section("Protocols (\(group.protocols.count))") {
                 ForEach(group.sortedProtocols) { proto in
                     NavigationLink {
-                        ProtocolEditor(proto: proto)
+                        ProtocolDetailView(
+                            protocolId: proto.id.uuidString,
+                            label: proto.label,
+                            subtitle: proto.subtitle,
+                            documentId: proto.documentId
+                        )
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(proto.label)

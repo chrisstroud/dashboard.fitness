@@ -13,6 +13,12 @@ struct ProtocolDetailView: View {
     @State private var detail: ProtocolDetailData?
     @State private var isLoading = true
     @Query private var allDocs: [UserDocument]
+    @Query private var allProtocols: [UserProtocol]
+
+    private var masterProtocol: UserProtocol? {
+        guard let uuid = UUID(uuidString: protocolId) else { return nil }
+        return allProtocols.first { $0.id == uuid }
+    }
 
     var body: some View {
         ScrollView {
@@ -82,6 +88,15 @@ struct ProtocolDetailView: View {
         }
         .navigationTitle("Protocol")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let proto = masterProtocol {
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink("Edit") {
+                        ProtocolEditor(proto: proto)
+                    }
+                }
+            }
+        }
         .task { await loadDetail() }
     }
 
