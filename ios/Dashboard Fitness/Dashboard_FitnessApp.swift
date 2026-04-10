@@ -20,6 +20,7 @@ struct Dashboard_FitnessApp: App {
             DailyTask.self,
             DocFolder.self,
             UserDocument.self,
+            WorkoutCompletion.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

@@ -33,21 +33,18 @@ struct HomeTab: View {
 
 struct DailyInstanceView: View {
     let instance: DailyInstance
-    @State private var selectedWorkouts: Set<String> = []
     @State private var collapsedGroups: Set<String> = []
+    @State private var hasInitialized = false
 
     var body: some View {
         let sections = instance.tasksBySections()
 
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Header + progress
                 DayHeader(instance: instance)
 
-                // Workout picker at top
-                WorkoutPicker(selectedWorkouts: $selectedWorkouts)
+                WorkoutPicker()
 
-                // Protocol sections
                 ForEach(sections) { section in
                     CollapsibleSectionView(
                         section: section,
@@ -61,14 +58,15 @@ struct DailyInstanceView: View {
         }
         .background(Color(.systemGroupedBackground))
         .scrollIndicators(.hidden)
-        .onAppear { autoCollapseCompletedGroups() }
-    }
-
-    private func autoCollapseCompletedGroups() {
-        let sections = instance.tasksBySections()
-        for section in sections {
-            for group in section.groups where group.allCompleted {
-                collapsedGroups.insert(group.id)
+        .onAppear {
+            guard !hasInitialized else { return }
+            hasInitialized = true
+            // Default: collapse all groups
+            let sections = instance.tasksBySections()
+            for section in sections {
+                for group in section.groups {
+                    collapsedGroups.insert(group.id)
+                }
             }
         }
     }
@@ -123,15 +121,13 @@ struct DayHeader: View {
     }
 }
 
-// MARK: - Workout Picker (wrapped chip grid, linked to docs)
+// MARK: - Workout Picker (checkable chips with weekly progress)
 
 struct WorkoutPicker: View {
-    @Binding var selectedWorkouts: Set<String>
     @Query private var allFolders: [DocFolder]
-    @Query private var allDocs: [UserDocument]
+    @Environment(\.modelContext) private var modelContext
 
     private var workoutDocs: [UserDocument] {
-        // Find docs in a folder named "Workouts"
         if let folder = allFolders.first(where: { $0.name.lowercased() == "workouts" }) {
             return folder.sortedDocuments
         }
@@ -139,81 +135,88 @@ struct WorkoutPicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        if !workoutDocs.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
                 Text("WORKOUT")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                     .tracking(0.8)
-                Spacer()
-                if !selectedWorkouts.isEmpty {
-                    Text("\(selectedWorkouts.count) selected")
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
-                }
-            }
-            .padding(.horizontal, 20)
-
-            if workoutDocs.isEmpty {
-                Text("Add workout docs to a \"Workouts\" folder in Docs")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
                     .padding(.horizontal, 20)
-            } else {
+
                 FlowLayout(spacing: 8) {
                     ForEach(workoutDocs) { doc in
-                        WorkoutDocChip(
-                            doc: doc,
-                            isSelected: selectedWorkouts.contains(doc.id.uuidString)
-                        ) {
-                            toggleWorkout(doc.id.uuidString)
-                        }
+                        WorkoutChipView(doc: doc)
                     }
                 }
                 .padding(.horizontal, 16)
             }
         }
     }
-
-    private func toggleWorkout(_ id: String) {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            if selectedWorkouts.contains(id) {
-                selectedWorkouts.remove(id)
-            } else {
-                selectedWorkouts.insert(id)
-            }
-        }
-    }
 }
 
-struct WorkoutDocChip: View {
-    let doc: UserDocument
-    let isSelected: Bool
-    let toggle: () -> Void
+struct WorkoutChipView: View {
+    @Bindable var doc: UserDocument
+    @Environment(\.modelContext) private var modelContext
+
+    private var isDoneToday: Bool { doc.isCompletedToday() }
+    private var weekCount: Int { doc.weekCompletionCount() }
+    private var weekTarget: Int? { doc.weeklyTarget }
 
     var body: some View {
-        NavigationLink {
-            DocumentView(document: doc)
-        } label: {
-            HStack(spacing: 5) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption2.bold())
-                }
+        HStack(spacing: 6) {
+            // Checkbox
+            Button(action: toggleToday) {
+                Image(systemName: isDoneToday ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(isDoneToday ? .white : chipForeground)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+
+            // Label — taps into doc
+            NavigationLink {
+                DocumentView(document: doc)
+            } label: {
                 Text(doc.title)
                     .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isDoneToday ? .white : chipForeground)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                isSelected
-                    ? AnyShapeStyle(Color.blue)
-                    : AnyShapeStyle(.regularMaterial),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .foregroundStyle(isSelected ? .white : .primary)
+
+            // Weekly count badge
+            if let target = weekTarget {
+                Text("\(weekCount)/\(target)")
+                    .font(.caption2.bold().monospacedDigit())
+                    .foregroundStyle(isDoneToday ? .white.opacity(0.8) : weekCount >= target ? .green : .secondary)
+            }
         }
-        .simultaneousGesture(LongPressGesture().onEnded { _ in toggle() })
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            isDoneToday
+                ? AnyShapeStyle(Color.green)
+                : AnyShapeStyle(.regularMaterial),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+    }
+
+    private var chipForeground: Color {
+        if let target = weekTarget, weekCount >= target {
+            return .secondary
+        }
+        return .primary
+    }
+
+    private func toggleToday() {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            let calendar = Calendar.current
+            if let existing = doc.completions.first(where: { calendar.isDateInToday($0.date) }) {
+                modelContext.delete(existing)
+            } else {
+                let completion = WorkoutCompletion(date: Date())
+                completion.document = doc
+                modelContext.insert(completion)
+            }
+        }
     }
 }
 

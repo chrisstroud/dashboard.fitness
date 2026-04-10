@@ -36,17 +36,17 @@ DOCS = [
      "content": "# Morning Supplements\n\n| Supplement | Dose | Why |\n|---|---|---|\n| Fish Oil (EPA/DHA) | 3-5g | Anti-inflammatory, cardiovascular, cognitive |\n| Vitamin D3 + K2 | 5,000 IU / 200mcg | Target 40-60 ng/mL |\n| Zinc Picolinate | 15-20mg | Testosterone support, immune |\n| Boron | 10mg | May support free T |\n| Creatine | 10g | Muscle + bone + cognitive |\n| Multivitamin | 1x | Methylated B vitamins |"},
     {"title": "Evening Supplements", "folder": "Supplements",
      "content": "# Evening Supplements\n\n| Supplement | Dose | Why |\n|---|---|---|\n| Magnesium Glycinate | 400mg | Sleep quality, recovery |\n| L-Theanine | 200mg | Synergistic with mag |\n| Ashwagandha KSM-66 | 600mg | Cortisol reduction. Cycle 4on/1off |\n| Glycine | 3-5g | Lowers core temp, collagen |"},
-    {"title": "Bench Day", "folder": "Workouts",
+    {"title": "Bench Day", "folder": "Workouts", "weekly_target": 1,
      "content": "# Bench Day\n\n*~75-85 min*\n\n## DNS Stability (5 min)\n- Dead bugs: 2x8\n- Bird dogs: 2x8\n- Crocodile breathing: 5 breaths\n\n## ATG Warm-Up\n- External rotations 3x12\n- Powell raises 3x12\n\n## Strength\n- Bench\n- Incline DB\n- BB Row\n\n## Shoulders\n- Lateral raises: 3x12\n- Face pulls: 3x15\n\n## Arms (superset)\n- Triceps\n- Curls\n\n## Core Finisher\n- Hanging leg raises: 25 reps\n\n---\n\n## Log\n\n"},
-    {"title": "Squat Day", "folder": "Workouts",
+    {"title": "Squat Day", "folder": "Workouts", "weekly_target": 1,
      "content": "# Squat Day\n\n*~75-85 min*\n\n## DNS Stability (5 min)\n- Dead bugs: 2x8\n- Bird dogs: 2x8\n- Crocodile breathing: 5 breaths\n\n## ATG Warm-Up\n- Tib raises: 4x25\n- Calf raises (weighted)\n- Elevated ATG split squats: 3x8\n\n## Explosive\n- Box jumps: 5x3\n\n## Strength\n- Back Squat\n- Bulgarian Split Squat\n\n## Upper Pull\n- Weighted Chins\n\n## Core Finisher\n- Ab rollouts: 3x10\n\n---\n\n## Log\n\n"},
-    {"title": "Press Day", "folder": "Workouts",
+    {"title": "Press Day", "folder": "Workouts", "weekly_target": 1,
      "content": "# Press Day\n\n*~75-85 min*\n\n## DNS Stability (5 min)\n- Dead bugs: 2x8\n- Bird dogs: 2x8\n- Crocodile breathing: 5 breaths\n\n## ATG Warm-Up\n- External rotations 3x12\n- Powell raises 3x12\n\n## Strength\n- OHP\n- DB Pullover\n\n## Shoulders\n- ATG press: 3x10\n- Lateral raises: 3x12\n- Face pulls: 3x15\n\n## Arms (superset)\n- Triceps\n- Curls\n\n## Back\n- Back extensions: 100 reps\n- Max hangs: 3x\n\n## Core Finisher\n- Farmer's carry: 3x heavy\n\n---\n\n## Log\n\n"},
-    {"title": "Hinge Day", "folder": "Workouts",
+    {"title": "Hinge Day", "folder": "Workouts", "weekly_target": 1,
      "content": "# Hinge Day\n\n*~65-75 min*\n\n## DNS Stability (5 min)\n- Dead bugs: 2x8\n- Bird dogs: 2x8\n- Crocodile breathing: 5 breaths\n\n## ATG Warm-Up\n- Tib raises: 4x25\n- Nordics: 5x5\n- Sissy squats: 3x\n\n## Explosive\n- Box jumps: 5x3\n\n## Strength\n- Deadlift or RDL\n- Glute work\n- Leg curls\n\n## Upper Pull\n- BB Rows or DB Rows\n\n## Core Finisher\n- Hanging leg raises: 25 reps\n\n---\n\n## Log\n\n"},
-    {"title": "Zone 2 Ride", "folder": "Workouts",
+    {"title": "Zone 2 Ride", "folder": "Workouts", "weekly_target": 4,
      "content": "# Zone 2 Bike Ride\n\n*45-60 min, easy pace*\n\nConversational pace. Talk test: can converse but not sing.\n\n**Target:** 180 min/week total Zone 2\n\n---\n\n## Log\n\n"},
-    {"title": "HIIT Hills", "folder": "Workouts",
+    {"title": "HIIT Hills", "folder": "Workouts", "weekly_target": 1,
      "content": "# HIIT Hill Ride\n\n*~45 min with warm-up/cooldown*\n\nNorwegian 4x4:\n- 4 min hard (85-95% HRmax)\n- 3 min easy (~70% HRmax)\n- Repeat x4\n\n---\n\n## Log\n\n"},
 ]
 
@@ -117,6 +117,8 @@ def seed_folders():
 def seed_docs():
     for doc in DOCS:
         payload = {"title": doc["title"], "content": doc["content"]}
+        if doc.get("weekly_target"):
+            payload["weekly_target"] = doc["weekly_target"]
         if doc.get("folder") in folder_ids:
             payload["folder_id"] = folder_ids[doc["folder"]]
         resp = requests.post(f"{BASE}/documents/", json=payload)

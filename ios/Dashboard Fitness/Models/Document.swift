@@ -38,8 +38,12 @@ final class UserDocument {
     var title: String
     var content: String
     var folder: DocFolder?
+    var weeklyTarget: Int?
     var createdAt: Date
     var updatedAt: Date
+
+    @Relationship(deleteRule: .cascade, inverse: \WorkoutCompletion.document)
+    var completions: [WorkoutCompletion] = []
 
     init(title: String, content: String = "", folder: DocFolder? = nil) {
         self.id = UUID()
@@ -48,5 +52,31 @@ final class UserDocument {
         self.folder = folder
         self.createdAt = Date()
         self.updatedAt = Date()
+    }
+
+    func weekCompletionCount() -> Int {
+        let calendar = Calendar.current
+        let today = Date()
+        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+        return completions.filter { $0.date >= weekStart }.count
+    }
+
+    func isCompletedToday() -> Bool {
+        let calendar = Calendar.current
+        return completions.contains { calendar.isDateInToday($0.date) }
+    }
+}
+
+@Model
+final class WorkoutCompletion {
+    @Attribute(.unique) var id: UUID
+    var document: UserDocument?
+    var date: Date
+    var completedAt: Date
+
+    init(date: Date) {
+        self.id = UUID()
+        self.date = date
+        self.completedAt = Date()
     }
 }

@@ -3,7 +3,9 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 
 from api.models import db
-from api.models.document import Document, Folder
+from datetime import date, timedelta
+
+from api.models.document import Document, Folder, WorkoutCompletion
 
 documents_bp = Blueprint("documents", __name__)
 
@@ -146,6 +148,7 @@ def create_document():
         title=data["title"],
         content=data.get("content", ""),
         folder_id=data.get("folder_id"),
+        weekly_target=data.get("weekly_target"),
     )
     db.session.add(doc)
     db.session.commit()
@@ -162,6 +165,8 @@ def update_document(doc_id: str):
         doc.content = data["content"]
     if "folder_id" in data:
         doc.folder_id = data["folder_id"]
+    if "weekly_target" in data:
+        doc.weekly_target = data["weekly_target"]
     db.session.commit()
     return jsonify({"id": doc.id, "title": doc.title})
 
@@ -172,3 +177,61 @@ def delete_document(doc_id: str):
     db.session.delete(doc)
     db.session.commit()
     return jsonify({"deleted": True})
+
+
+# ── Workout Completions ──────────────────────────────────────────────
+
+@documents_bp.route("/workouts/status", methods=["GET"])
+def workout_status():
+    """Get all workout docs with weekly completion counts."""
+    # Find the Workouts folder
+    folder = Folder.query.filter_by(user_id=TEMP_USER_ID, name="Workouts").first()
+    if not folder:
+        return jsonify([])
+
+    docs = Document.query.filter_by(folder_id=folder.id).order_by(Document.title).all()
+
+    # Current week boundaries (Monday-Sunday)
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+
+    result = []
+    for doc in docs:
+        week_completions = WorkoutCompletion.query.filter(
+            WorkoutCompletion.document_id == doc.id,
+            WorkoutCompletion.user_id == TEMP_USER_ID,
+            WorkoutCompletion.date >= week_start,
+        ).count()
+
+        today_done = WorkoutCompletion.query.filter_by(
+            document_id=doc.id, user_id=TEMP_USER_ID, date=today,
+        ).first() is not None
+
+        result.append({
+            "id": doc.id,
+            "title": doc.title,
+            "weekly_target": doc.weekly_target,
+            "week_completions": week_completions,
+            "completed_today": today_done,
+        })
+
+    return jsonify(result)
+
+
+@documents_bp.route("/workouts/<doc_id>/toggle", methods=["POST"])
+def toggle_workout(doc_id: str):
+    """Toggle workout completion for today."""
+    today = date.today()
+    existing = WorkoutCompletion.query.filter_by(
+        user_id=TEMP_USER_ID, document_id=doc_id, date=today,
+    ).first()
+
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
+        return jsonify({"completed_today": False})
+    else:
+        completion = WorkoutCompletion(user_id=TEMP_USER_ID, document_id=doc_id, date=today)
+        db.session.add(completion)
+        db.session.commit()
+        return jsonify({"completed_today": True}), 201

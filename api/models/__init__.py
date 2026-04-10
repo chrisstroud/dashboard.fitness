@@ -25,4 +25,4 @@ from api.models.protocol import (  # noqa: E402, F401
     ProtocolGroup,
     ProtocolSection,
 )
-from api.models.document import Document, Folder  # noqa: E402, F401
+from api.models.document import Document, Folder, WorkoutCompletion  # noqa: E402, F401
