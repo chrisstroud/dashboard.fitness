@@ -33,22 +33,27 @@ struct HomeTab: View {
 
 struct DailyInstanceView: View {
     let instance: DailyInstance
+    @State private var selectedWorkouts: Set<String> = []
+    @State private var collapsedGroups: Set<String> = []
 
     var body: some View {
         let sections = instance.tasksBySections()
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // Hero header
+            VStack(alignment: .leading, spacing: 16) {
+                // Header + progress
                 DayHeader(instance: instance)
 
-                // Sections
-                ForEach(sections) { section in
-                    TaskSectionView(section: section)
-                }
+                // Workout picker at top
+                WorkoutPicker(selectedWorkouts: $selectedWorkouts)
 
-                // Workout picker
-                WorkoutChipSection()
+                // Protocol sections
+                ForEach(sections) { section in
+                    CollapsibleSectionView(
+                        section: section,
+                        collapsedGroups: $collapsedGroups
+                    )
+                }
 
                 Spacer(minLength: 40)
             }
@@ -56,10 +61,20 @@ struct DailyInstanceView: View {
         }
         .background(Color(.systemGroupedBackground))
         .scrollIndicators(.hidden)
+        .onAppear { autoCollapseCompletedGroups() }
+    }
+
+    private func autoCollapseCompletedGroups() {
+        let sections = instance.tasksBySections()
+        for section in sections {
+            for group in section.groups where group.allCompleted {
+                collapsedGroups.insert(group.id)
+            }
+        }
     }
 }
 
-// MARK: - Day Header with Progress Ring
+// MARK: - Day Header
 
 struct DayHeader: View {
     let instance: DailyInstance
@@ -68,7 +83,7 @@ struct DayHeader: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(instance.date, format: .dateTime.weekday(.wide))
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                     .tracking(1.2)
@@ -108,14 +123,95 @@ struct DayHeader: View {
     }
 }
 
-// MARK: - Section
+// MARK: - Workout Picker
 
-struct TaskSectionView: View {
-    let section: DailySection
-    @Environment(\.modelContext) private var modelContext
+struct WorkoutPicker: View {
+    @Binding var selectedWorkouts: Set<String>
+
+    private let workouts = ["Bench Day", "Squat Day", "Press Day", "Hinge Day", "Zone 2", "HIIT"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("WORKOUT")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .tracking(0.8)
+                Spacer()
+                if !selectedWorkouts.isEmpty {
+                    Text("\(selectedWorkouts.count) selected")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                }
+            }
+            .padding(.horizontal, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(workouts, id: \.self) { name in
+                        WorkoutChip(
+                            name: name,
+                            isSelected: selectedWorkouts.contains(name),
+                            action: { toggleWorkout(name) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func toggleWorkout(_ name: String) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            if selectedWorkouts.contains(name) {
+                selectedWorkouts.remove(name)
+            } else {
+                selectedWorkouts.insert(name)
+            }
+        }
+    }
+}
+
+struct WorkoutChip: View {
+    let name: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.bold())
+                }
+                Text(name)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                isSelected
+                    ? AnyShapeStyle(Color.blue)
+                    : AnyShapeStyle(.regularMaterial),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .foregroundStyle(isSelected ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Collapsible Section
+
+struct CollapsibleSectionView: View {
+    let section: DailySection
+    @Binding var collapsedGroups: Set<String>
+    @Environment(\.modelContext) private var modelContext
+
+    private var allCompleted: Bool { section.allCompleted }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             // Section header
             HStack(alignment: .center) {
                 Text(section.name.uppercased())
@@ -123,83 +219,135 @@ struct TaskSectionView: View {
                     .foregroundStyle(.secondary)
                     .tracking(0.8)
 
+                // Completion summary
+                if allCompleted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Text("All done")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                } else {
+                    Text("\(section.completedCount)/\(section.totalCount)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+
                 Spacer()
 
-                Text("\(section.completedCount)/\(section.totalCount)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-
                 Button(action: toggleSection) {
-                    Image(systemName: section.allCompleted ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: allCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 20))
-                        .foregroundStyle(section.allCompleted ? .green : Color(.systemGray3))
+                        .foregroundStyle(allCompleted ? .green : Color(.systemGray3))
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
             .padding(.horizontal, 20)
 
             // Groups
-            VStack(spacing: 2) {
-                ForEach(section.groups) { group in
-                    TaskGroupCard(group: group)
-                }
+            ForEach(section.groups) { group in
+                CollapsibleGroupCard(
+                    group: group,
+                    isCollapsed: collapsedGroups.contains(group.id),
+                    toggleCollapse: { toggleGroupCollapse(group) }
+                )
             }
-            .padding(.horizontal, 16)
         }
     }
 
     private func toggleSection() {
-        let newStatus = section.allCompleted ? "pending" : "completed"
-        for task in section.allTasks {
-            task.status = newStatus
-            task.completedAt = newStatus == "pending" ? nil : Date()
+        let newStatus = allCompleted ? "pending" : "completed"
+        withAnimation(.easeInOut(duration: 0.2)) {
+            for task in section.allTasks {
+                task.status = newStatus
+                task.completedAt = newStatus == "pending" ? nil : Date()
+            }
+            // Auto-collapse/expand
+            for group in section.groups {
+                if newStatus == "completed" {
+                    collapsedGroups.insert(group.id)
+                } else {
+                    collapsedGroups.remove(group.id)
+                }
+            }
+        }
+    }
+
+    private func toggleGroupCollapse(_ group: DailyGroup) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if collapsedGroups.contains(group.id) {
+                collapsedGroups.remove(group.id)
+            } else {
+                collapsedGroups.insert(group.id)
+            }
         }
     }
 }
 
-// MARK: - Group Card
+// MARK: - Collapsible Group Card
 
-struct TaskGroupCard: View {
+struct CollapsibleGroupCard: View {
     let group: DailyGroup
+    let isCollapsed: Bool
+    let toggleCollapse: () -> Void
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Group header
-            HStack {
-                Text(group.name)
-                    .font(.subheadline.weight(.semibold))
+            // Group header — always visible, tappable to collapse
+            Button(action: toggleCollapse) {
+                HStack {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
 
-                Spacer()
+                    Text(group.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(group.allCompleted ? .secondary : .primary)
 
-                Text("\(group.completedCount)/\(group.tasks.count)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    if group.allCompleted {
+                        Image(systemName: "checkmark")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.green)
+                    }
 
-                Button(action: toggleGroup) {
-                    Image(systemName: group.allCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 17))
-                        .foregroundStyle(group.allCompleted ? .green : Color(.systemGray3))
-                        .contentTransition(.symbolEffect(.replace))
+                    Spacer()
+
+                    Text("\(group.completedCount)/\(group.tasks.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+
+                    Button(action: toggleGroup) {
+                        Image(systemName: group.allCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 17))
+                            .foregroundStyle(group.allCompleted ? .green : Color(.systemGray3))
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
 
-            Divider()
-                .padding(.leading, 16)
+            // Tasks — collapsible
+            if !isCollapsed {
+                Divider()
+                    .padding(.leading, 16)
 
-            // Tasks
-            ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in
-                DailyTaskRow(task: task)
-
-                if index < group.tasks.count - 1 {
-                    Divider()
-                        .padding(.leading, 52)
+                ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in
+                    DailyTaskRow(task: task)
+                    if index < group.tasks.count - 1 {
+                        Divider()
+                            .padding(.leading, 52)
+                    }
                 }
             }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
     }
 
     private func toggleGroup() {
@@ -220,7 +368,6 @@ struct DailyTaskRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Status circle
             Button(action: cycleStatus) {
                 Image(systemName: statusIcon)
                     .font(.system(size: 22))
@@ -230,7 +377,6 @@ struct DailyTaskRow: View {
             }
             .buttonStyle(.plain)
 
-            // Content — tappable for detail
             NavigationLink {
                 ProtocolDetailView(
                     protocolId: task.sourceProtocolId ?? "",
@@ -304,37 +450,27 @@ struct DailyTaskRow: View {
     }
 }
 
-// MARK: - Workout Chips
+// MARK: - Linked Doc View
 
-struct WorkoutChipSection: View {
+struct LinkedDocView: View {
+    let documentId: UUID
+    @Query private var allDocs: [UserDocument]
+    private var document: UserDocument? { allDocs.first { $0.id == documentId } }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("WORKOUT")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                    .tracking(0.8)
-                Spacer()
-                Button(action: {}) {
-                    Text("Program")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.blue)
+        if let doc = document {
+            ScrollView {
+                if doc.content.isEmpty {
+                    Text("No content yet.").foregroundStyle(.secondary).padding()
+                } else {
+                    MarkdownView(content: doc.content).padding()
                 }
             }
-            .padding(.horizontal, 20)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(["Bench Day", "Squat Day", "Press Day", "Hinge Day", "Zone 2", "HIIT"], id: \.self) { name in
-                        Text(name)
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
+            .navigationTitle(doc.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .background(Color(.systemGroupedBackground))
+        } else {
+            ContentUnavailableView("Document Not Found", systemImage: "doc.questionmark")
         }
     }
 }
@@ -361,30 +497,6 @@ struct FlowLayout: Layout {
             positions.append(CGPoint(x: x, y: y)); rh = max(rh, s.height); x += s.width + spacing
         }
         return (CGSize(width: maxW, height: y + rh), positions)
-    }
-}
-
-// MARK: - Linked Doc View (reused from protocol detail)
-
-struct LinkedDocView: View {
-    let documentId: UUID
-    @Query private var allDocs: [UserDocument]
-    private var document: UserDocument? { allDocs.first { $0.id == documentId } }
-
-    var body: some View {
-        if let doc = document {
-            ScrollView {
-                if doc.content.isEmpty {
-                    Text("No content yet.").foregroundStyle(.secondary).padding()
-                } else {
-                    MarkdownView(content: doc.content).padding()
-                }
-            }
-            .navigationTitle(doc.title)
-            .navigationBarTitleDisplayMode(.inline)
-        } else {
-            ContentUnavailableView("Document Not Found", systemImage: "doc.questionmark")
-        }
     }
 }
 
