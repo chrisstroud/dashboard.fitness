@@ -1,8 +1,8 @@
-"""initial schema v8
+"""initial schema v9
 
-Revision ID: e59df7174316
+Revision ID: 36935aa0bf3b
 Revises: 
-Create Date: 2026-04-10 15:02:18.090916
+Create Date: 2026-04-10 15:08:42.209881
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'e59df7174316'
+revision = '36935aa0bf3b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -137,6 +137,8 @@ def upgrade():
     sa.Column('title', sa.String(length=200), nullable=False),
     sa.Column('content', sa.Text(), nullable=False),
     sa.Column('weekly_target', sa.Integer(), nullable=True),
+    sa.Column('duration_minutes', sa.Integer(), nullable=True),
+    sa.Column('activity_type', sa.String(length=50), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['folder_id'], ['folders.id'], ),
@@ -202,6 +204,8 @@ def upgrade():
     sa.Column('user_id', sa.String(length=36), nullable=False),
     sa.Column('document_id', sa.String(length=36), nullable=False),
     sa.Column('date', sa.Date(), nullable=False),
+    sa.Column('duration_minutes', sa.Integer(), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
     sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['document_id'], ['documents.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),

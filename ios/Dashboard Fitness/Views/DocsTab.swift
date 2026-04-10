@@ -138,19 +138,23 @@ struct DocumentView: View {
     @State private var selectedTab = 0
     @State private var isEditing = false
 
+    private var tabCount: Int { document.isWorkout ? 3 : 2 }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Tab picker
             Picker("View", selection: $selectedTab) {
                 Text("Content").tag(0)
+                if document.isWorkout {
+                    Text("Settings").tag(2)
+                }
                 Text("Protocols").tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.vertical, 8)
 
-            if selectedTab == 0 {
-                // Content tab
+            switch selectedTab {
+            case 0:
                 if isEditing {
                     TextEditor(text: $document.content)
                         .font(.body.monospaced())
@@ -169,8 +173,9 @@ struct DocumentView: View {
                         }
                     }
                 }
-            } else {
-                // Linked protocols tab
+            case 2:
+                WorkoutSettingsView(document: document)
+            default:
                 LinkedProtocolsView(documentId: document.id)
             }
         }
@@ -239,6 +244,105 @@ struct LinkedProtocolsView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Workout Settings
+
+struct WorkoutSettingsView: View {
+    @Bindable var document: UserDocument
+
+    private let activityTypes = [
+        ("strength", "Strength Training", "dumbbell.fill"),
+        ("cycling", "Cycling", "bicycle"),
+        ("hiit", "HIIT", "bolt.heart.fill"),
+        ("running", "Running", "figure.run"),
+        ("yoga", "Yoga", "figure.mind.and.body"),
+        ("flexibility", "Flexibility", "figure.flexibility"),
+        ("other", "Other", "figure.mixed.cardio"),
+    ]
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Activity Type", selection: Binding(
+                    get: { document.activityType ?? "other" },
+                    set: { document.activityType = $0 }
+                )) {
+                    ForEach(activityTypes, id: \.0) { type in
+                        Label(type.1, systemImage: type.2).tag(type.0)
+                    }
+                }
+            } header: {
+                Text("Activity")
+            } footer: {
+                Text("Maps to Apple HealthKit workout types for future integration.")
+            }
+
+            Section("Schedule") {
+                Stepper(
+                    "Frequency: \(document.weeklyTarget ?? 0)x / week",
+                    value: Binding(
+                        get: { document.weeklyTarget ?? 0 },
+                        set: { document.weeklyTarget = $0 == 0 ? nil : $0 }
+                    ),
+                    in: 0...7
+                )
+
+                Stepper(
+                    "Duration: \(document.durationMinutes ?? 0) min",
+                    value: Binding(
+                        get: { document.durationMinutes ?? 0 },
+                        set: { document.durationMinutes = $0 == 0 ? nil : $0 }
+                    ),
+                    in: 0...180,
+                    step: 5
+                )
+            }
+
+            Section("This Week") {
+                let count = document.weekCompletionCount()
+                let target = document.weeklyTarget ?? 0
+
+                HStack {
+                    Text("Completed")
+                    Spacer()
+                    Text("\(count)\(target > 0 ? " / \(target)" : "")")
+                        .foregroundStyle(target > 0 && count >= target ? .green : .primary)
+                        .fontWeight(.medium)
+                }
+
+                if !document.completions.isEmpty {
+                    let recent = document.completions
+                        .sorted { $0.date > $1.date }
+                        .prefix(5)
+                    ForEach(Array(recent), id: \.id) { completion in
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(completion.date, format: .dateTime.weekday(.wide).month().day())
+                                .font(.subheadline)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                HStack {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(.red)
+                    Text("Apple HealthKit")
+                    Spacer()
+                    Text("Coming soon")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            } header: {
+                Text("Integrations")
+            } footer: {
+                Text("When connected, workout completions will sync to Apple Health.")
             }
         }
     }

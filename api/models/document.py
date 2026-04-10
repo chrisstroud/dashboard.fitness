@@ -35,7 +35,12 @@ class Document(db.Model):
     folder_id: str = db.Column(db.String(36), db.ForeignKey("folders.id"), nullable=True)
     title: str = db.Column(db.String(200), nullable=False)
     content: str = db.Column(db.Text, nullable=False, default="")
+
+    # Workout metadata (only used for docs in the Workouts folder)
     weekly_target: int = db.Column(db.Integer, nullable=True)  # e.g. 1 = once/week, 4 = 4x/week
+    duration_minutes: int = db.Column(db.Integer, nullable=True)  # expected session length
+    activity_type: str = db.Column(db.String(50), nullable=True)  # maps to HKWorkoutActivityType
+    # Values: strength, cycling, hiit, running, yoga, flexibility, other
     created_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -59,6 +64,8 @@ class WorkoutCompletion(db.Model):
     user_id: str = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
     document_id: str = db.Column(db.String(36), db.ForeignKey("documents.id"), nullable=False)
     date: date = db.Column(db.Date, nullable=False)
+    duration_minutes: int = db.Column(db.Integer, nullable=True)  # actual duration
+    notes: str = db.Column(db.Text, nullable=True)
     completed_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

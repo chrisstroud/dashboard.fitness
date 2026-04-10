@@ -149,6 +149,8 @@ def create_document():
         content=data.get("content", ""),
         folder_id=data.get("folder_id"),
         weekly_target=data.get("weekly_target"),
+        duration_minutes=data.get("duration_minutes"),
+        activity_type=data.get("activity_type"),
     )
     db.session.add(doc)
     db.session.commit()
@@ -167,6 +169,10 @@ def update_document(doc_id: str):
         doc.folder_id = data["folder_id"]
     if "weekly_target" in data:
         doc.weekly_target = data["weekly_target"]
+    if "duration_minutes" in data:
+        doc.duration_minutes = data["duration_minutes"]
+    if "activity_type" in data:
+        doc.activity_type = data["activity_type"]
     db.session.commit()
     return jsonify({"id": doc.id, "title": doc.title})
 

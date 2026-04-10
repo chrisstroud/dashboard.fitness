@@ -39,6 +39,8 @@ final class UserDocument {
     var content: String
     var folder: DocFolder?
     var weeklyTarget: Int?
+    var durationMinutes: Int?
+    var activityType: String?  // strength, cycling, hiit, running, yoga, flexibility, other
     var createdAt: Date
     var updatedAt: Date
 
@@ -52,6 +54,10 @@ final class UserDocument {
         self.folder = folder
         self.createdAt = Date()
         self.updatedAt = Date()
+    }
+
+    var isWorkout: Bool {
+        folder?.name.lowercased() == "workouts"
     }
 
     func weekCompletionCount() -> Int {
