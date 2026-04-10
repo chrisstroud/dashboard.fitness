@@ -1,6 +1,6 @@
 # Product Roadmap -- dashboard.fitness
 
-**Last Updated:** 2026-04-03
+**Last Updated:** 2026-04-10
 
 ---
 
@@ -12,26 +12,28 @@ Personal health operating system. One place to see training, recovery, nutrition
 
 ## Now (Q2 2026)
 
-**Foundation**
+**Foundation -- iOS App + Flask API**
 
-- [ ] Framework decision (Flask? FastAPI? Static generator? Keep pure PWA?)
-- [ ] Repository structure finalized
-- [ ] Core data model designed (workouts, metrics, biomarkers)
-- [ ] Daily generation pipeline hardened
-- [ ] Whoop data sync automated and reliable
+- [x] Stack decision: SwiftUI + SwiftData (iOS) + Flask + PostgreSQL (Railway)
+- [ ] Railway project setup (Flask API scaffold, PostgreSQL provisioned)
+- [ ] Core data model designed (workouts, exercises, sets, metrics)
+- [ ] iOS project scaffold (Xcode project, SwiftData models, basic navigation)
+- [ ] Manual workout logging (enter sets/reps/weight on phone)
+- [ ] Daily generation pipeline continues working (existing, no changes needed)
+
+Running locally via Xcode free provisioning. Apple Developer fee deferred until TestFlight needed.
 
 ---
 
 ## Next (Q3 2026)
 
-**TBD -- depends on framework decision**
+**Core App**
 
-Candidates:
+- Workout tracking with progression charts
 - Weight trend visualization
-- Workout volume tracking and progression charts
-- Bloodwork panel tracking with optimal ranges
-- Supplement schedule integration
+- Supplement schedule in-app
 - Training program cycle management
+- Apple Developer fee + TestFlight (when ready)
 
 ---
 
@@ -39,10 +41,11 @@ Candidates:
 
 **Integrations & Expansion**
 
-- Whoop integration (deep -- HRV, strain, recovery scores)
+- Wearable integration (Apple Watch HealthKit or Whoop API -- TBD)
+- Bloodwork panel tracking with optimal ranges
 - Push notifications (training reminders, supplement timing)
-- iOS native app (or enhanced PWA with offline support)
 - Historical trend analysis (month-over-month, year-over-year)
+- Multi-user support
 - Goal setting and progress tracking
 - Nutrition macro tracking integration
 - Sleep quality correlation with training performance
