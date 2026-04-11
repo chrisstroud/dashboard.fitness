@@ -50,7 +50,7 @@ struct DailySection: Identifiable {
     let name: String
     let position: Int
     var groups: [DailyGroup] = []
-    var id: String { name }
+    var id: String { "\(position)-\(name)" }
 
     var allTasks: [DailyTask] { groups.flatMap(\.tasks) }
     var allCompleted: Bool { !allTasks.isEmpty && allTasks.allSatisfy { $0.status == "completed" } }
@@ -62,7 +62,7 @@ struct DailyGroup: Identifiable {
     let name: String
     let position: Int
     var tasks: [DailyTask]
-    var id: String { name }
+    var id: String { "\(position)-\(name)" }
 
     var allCompleted: Bool { !tasks.isEmpty && tasks.allSatisfy { $0.status == "completed" } }
     var completedCount: Int { tasks.filter { $0.status == "completed" }.count }

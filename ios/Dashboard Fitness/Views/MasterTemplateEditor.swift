@@ -1,10 +1,10 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct MasterTemplateEditor: View {
     @Query(sort: \ProtocolSection.position) private var sections: [ProtocolSection]
     @Environment(\.modelContext) private var modelContext
-    @State private var editMode: EditMode = .inactive
     @State private var showingAddProtocol = false
     @State private var showingAddSection = false
     @State private var newSectionName = ""
@@ -19,13 +19,14 @@ struct MasterTemplateEditor: View {
     @State private var showingDeleteConfirm = false
     @State private var deleteStackTarget: ProtocolGroup?
     @State private var deleteError: String?
-    @State private var addProtocolTargetStack: ProtocolGroup?
+    @State private var addProtocolTargetSection: ProtocolSection?
+    @State private var deleteSectionTarget: ProtocolSection?
 
     private func shouldCollapse(_ section: ProtocolSection, _ group: ProtocolGroup) -> Bool {
         shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count)
     }
 
-    var body: some View {
+    private var protocolList: some View {
         List {
             if sections.isEmpty && hasSeeded {
                 ContentUnavailableView(
@@ -38,43 +39,7 @@ struct MasterTemplateEditor: View {
             ForEach(sections) { section in
                 Section {
                     ForEach(section.sortedGroups) { group in
-                        // Stack header (hidden for single-stack with matching name)
-                        if !shouldCollapse(section, group) {
-                            HabitStackHeader(
-                                name: group.name,
-                                completedCount: 0,
-                                totalCount: group.protocols.count,
-                                showCompletion: false
-                            )
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 0, trailing: 20))
-                        }
-
-                        let protos = group.sortedProtocols
-                        if protos.isEmpty {
-                            EmptyStackPlaceholder()
-                                .listRowSeparator(.hidden)
-                        }
-
-                        ForEach(protos) { proto in
-                            NavigationLink {
-                                ProtocolDetailView(
-                                    protocolId: proto.id.uuidString,
-                                    label: proto.label,
-                                    subtitle: proto.subtitle,
-                                    documentId: proto.documentId
-                                )
-                            } label: {
-                                ProtocolRow(proto: proto)
-                            }
-                        }
-                        .onDelete { offsets in
-                            let items = protos
-                            for offset in offsets { modelContext.delete(items[offset]) }
-                        }
-                        .onMove { indices, destination in
-                            moveProtocols(indices, destination, in: group)
-                        }
+                        groupContent(group: group, section: section)
                     }
                     .onMove { indices, destination in
                         moveStacks(indices, destination, in: section)
@@ -86,11 +51,7 @@ struct MasterTemplateEditor: View {
             }
         }
         .navigationTitle("My Protocols")
-        .environment(\.editMode, $editMode)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                EditButton()
-            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { showingAddProtocol = true } label: {
@@ -106,8 +67,12 @@ struct MasterTemplateEditor: View {
         }
         .onAppear { seedDefaultSectionsIfNeeded() }
         .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
+    }
+
+    var body: some View {
+        protocolList
         .sheet(isPresented: $showingAddProtocol) {
-            CreateProtocolSheet {
+            CreateProtocolSheet(initialSection: addProtocolTargetSection) {
                 Task { await SyncService.shared.syncAll(modelContext: modelContext) }
             }
         }
@@ -160,6 +125,20 @@ struct MasterTemplateEditor: View {
         } message: {
             Text("Protocols in this stack will be moved to another stack in the same section.")
         }
+        .confirmationDialog("Delete Section?", isPresented: Binding(
+            get: { deleteSectionTarget != nil },
+            set: { if !$0 { deleteSectionTarget = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let section = deleteSectionTarget {
+                    modelContext.delete(section)
+                    LocalRefreshService.refreshToday(modelContext: modelContext)
+                }
+                deleteSectionTarget = nil
+            }
+        } message: {
+            Text("This will delete all stacks and protocols in this section.")
+        }
         .alert("Cannot Delete", isPresented: Binding(
             get: { deleteError != nil },
             set: { if !$0 { deleteError = nil } }
@@ -167,6 +146,89 @@ struct MasterTemplateEditor: View {
             Button("OK") { deleteError = nil }
         } message: {
             Text(deleteError ?? "")
+        }
+    }
+
+    // MARK: - Group Content
+
+    @ViewBuilder
+    private func groupContent(group: ProtocolGroup, section: ProtocolSection) -> some View {
+        if !shouldCollapse(section, group) {
+            stackHeader(group: group, section: section)
+        }
+
+        let protos = group.sortedProtocols
+        if protos.isEmpty {
+            EmptyStackPlaceholder()
+                .listRowSeparator(.hidden)
+        }
+
+        ForEach(protos) { proto in
+            protocolRow(proto: proto, group: group, section: section)
+        }
+        .onDelete { offsets in
+            let items = protos
+            for offset in offsets { modelContext.delete(items[offset]) }
+        }
+        .onMove { indices, destination in
+            moveProtocols(indices, destination, in: group)
+        }
+    }
+
+    private func stackHeader(group: ProtocolGroup, section: ProtocolSection) -> some View {
+        HabitStackHeader(
+            name: group.name,
+            completedCount: 0,
+            totalCount: group.protocols.count,
+            showCompletion: false
+        )
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 0, trailing: 20))
+        .contextMenu {
+            Button {
+                newStackName = group.name
+                renamingStack = group
+            } label: {
+                Label("Rename Stack", systemImage: "pencil")
+            }
+            if sections.count > 1 && section.groups.count > 1 {
+                Menu("Move to Section…") {
+                    ForEach(sections.filter { $0.id != section.id }) { target in
+                        Button(target.name) { moveStack(group, to: target) }
+                    }
+                }
+            }
+            Divider()
+            if section.groups.count > 1 {
+                Button(role: .destructive) {
+                    deleteStackTarget = group
+                    showingDeleteConfirm = true
+                } label: {
+                    Label("Delete Stack", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func protocolRow(proto: UserProtocol, group: ProtocolGroup, section: ProtocolSection) -> some View {
+        NavigationLink {
+            ProtocolDetailView(
+                protocolId: proto.id.uuidString,
+                label: proto.label,
+                subtitle: proto.subtitle,
+                documentId: proto.documentId
+            )
+        } label: {
+            ProtocolRow(proto: proto)
+        }
+        .contextMenu {
+            if section.groups.count > 1 {
+                Menu("Move to Stack…") {
+                    ForEach(section.sortedGroups.filter { $0.id != group.id }) { target in
+                        Button(target.name) { moveProtocol(proto, to: target) }
+                    }
+                }
+            }
         }
     }
 
@@ -179,6 +241,7 @@ struct MasterTemplateEditor: View {
             Spacer()
             Menu {
                 Button {
+                    addProtocolTargetSection = section
                     showingAddProtocol = true
                 } label: {
                     Label("Add Protocol Here", systemImage: "plus.circle")
@@ -190,6 +253,17 @@ struct MasterTemplateEditor: View {
                 } label: {
                     Label("Add Habit Stack", systemImage: "square.stack")
                 }
+
+                // Stack management — rename, move, delete each stack
+                Divider()
+                ForEach(section.sortedGroups) { group in
+                    Menu {
+                        stackMenuItems(group: group, section: section)
+                    } label: {
+                        Label(group.name, systemImage: "square.stack")
+                    }
+                }
+
                 Divider()
                 Button { renameSection(section) } label: {
                     Label("Rename Section", systemImage: "pencil")
@@ -206,8 +280,7 @@ struct MasterTemplateEditor: View {
                 }
                 Divider()
                 Button(role: .destructive) {
-                    modelContext.delete(section)
-                    LocalRefreshService.refreshToday(modelContext: modelContext)
+                    deleteSectionTarget = section
                 } label: {
                     Label("Delete Section", systemImage: "trash")
                 }
@@ -215,6 +288,32 @@ struct MasterTemplateEditor: View {
                 Image(systemName: "ellipsis.circle")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stackMenuItems(group: ProtocolGroup, section: ProtocolSection) -> some View {
+        Button {
+            newStackName = group.name
+            renamingStack = group
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        if sections.count > 1 && section.groups.count > 1 {
+            Menu("Move to Section…") {
+                ForEach(sections.filter { $0.id != section.id }) { target in
+                    Button(target.name) { moveStack(group, to: target) }
+                }
+            }
+        }
+        if section.groups.count > 1 {
+            Divider()
+            Button(role: .destructive) {
+                deleteStackTarget = group
+                showingDeleteConfirm = true
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -254,20 +353,25 @@ struct MasterTemplateEditor: View {
     private func moveSectionUp(_ section: ProtocolSection) {
         let sorted = sections.sorted { $0.position < $1.position }
         guard let idx = sorted.firstIndex(where: { $0.id == section.id }), idx > 0 else { return }
-        sorted[idx].position = idx - 1
-        sorted[idx - 1].position = idx
+        let temp = sorted[idx].position
+        sorted[idx].position = sorted[idx - 1].position
+        sorted[idx - 1].position = temp
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         SyncService.shared.syncPositions(sections: [sorted[idx], sorted[idx - 1]])
     }
 
     private func moveSectionDown(_ section: ProtocolSection) {
         let sorted = sections.sorted { $0.position < $1.position }
         guard let idx = sorted.firstIndex(where: { $0.id == section.id }), idx < sorted.count - 1 else { return }
-        sorted[idx].position = idx + 1
-        sorted[idx + 1].position = idx
+        let temp = sorted[idx].position
+        sorted[idx].position = sorted[idx + 1].position
+        sorted[idx + 1].position = temp
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         SyncService.shared.syncPositions(sections: [sorted[idx], sorted[idx + 1]])
     }
 
     private func moveStacks(_ indices: IndexSet, _ destination: Int, in section: ProtocolSection) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         var ordered = section.sortedGroups
         ordered.move(fromOffsets: indices, toOffset: destination)
         for (i, group) in ordered.enumerated() { group.position = i }
@@ -275,10 +379,29 @@ struct MasterTemplateEditor: View {
     }
 
     private func moveProtocols(_ indices: IndexSet, _ destination: Int, in group: ProtocolGroup) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         var ordered = group.sortedProtocols
         ordered.move(fromOffsets: indices, toOffset: destination)
         for (i, proto) in ordered.enumerated() { proto.position = i }
         SyncService.shared.syncPositions(protocols: ordered)
+    }
+
+    // MARK: - Cross-Moves
+
+    private func moveProtocol(_ proto: UserProtocol, to targetGroup: ProtocolGroup) {
+        let maxPos = targetGroup.protocols.map(\.position).max() ?? -1
+        proto.group = targetGroup
+        proto.position = maxPos + 1
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        SyncService.shared.syncPositions(protocols: [proto])
+    }
+
+    private func moveStack(_ group: ProtocolGroup, to targetSection: ProtocolSection) {
+        let maxPos = targetSection.groups.map(\.position).max() ?? -1
+        group.section = targetSection
+        group.position = maxPos + 1
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        SyncService.shared.syncPositions(groups: [group])
     }
 
     // MARK: - Stack CRUD

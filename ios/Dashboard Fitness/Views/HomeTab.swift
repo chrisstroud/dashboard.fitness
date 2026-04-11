@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct HomeTab: View {
     @Query(sort: \DailyInstance.date, order: .reverse) private var instances: [DailyInstance]
@@ -95,21 +96,92 @@ struct DailyInstanceView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                DayHeader(instance: instance)
+        VStack(spacing: 0) {
+            DayHeader(instance: instance)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
 
-                // All sections from My Protocols, with their daily tasks
+            List {
                 ForEach(mergedSections) { section in
-                    DailySectionView(section: section)
+                    SwiftUI.Section {
+                        dailySectionContent(section)
+                    } header: {
+                        dailySectionHeader(section)
+                    }
                 }
-
-                Spacer(minLength: 40)
             }
-            .padding(.top, 8)
         }
         .background(Color(.systemGroupedBackground))
-        .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Section Content
+
+    @ViewBuilder
+    private func dailySectionContent(_ section: DailySection) -> some View {
+        let isEmpty = section.totalCount == 0
+        if section.groups.isEmpty || (section.groups.count == 1 && section.groups[0].tasks.isEmpty && isEmpty) {
+            HStack {
+                Spacer()
+                Text("Add protocols in My Protocols")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+        } else {
+            ForEach(section.groups) { group in
+                dailyGroupContent(group, section: section)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dailyGroupContent(_ group: DailyGroup, section: DailySection) -> some View {
+        if !shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count) {
+            HabitStackHeader(
+                name: group.name,
+                completedCount: group.completedCount,
+                totalCount: group.tasks.count,
+                showRing: true
+            )
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 0, trailing: 20))
+        }
+
+        if group.tasks.isEmpty {
+            EmptyStackPlaceholder()
+                .listRowSeparator(.hidden)
+        } else {
+            ForEach(group.tasks) { task in
+                DailyTaskRow(task: task)
+            }
+        }
+    }
+
+    private func dailySectionHeader(_ section: DailySection) -> some View {
+        HStack(alignment: .center) {
+            Text(section.name)
+                .font(.subheadline.weight(.semibold))
+
+            if section.totalCount == 0 {
+                Text("No protocols")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else if section.allCompleted {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text("All done")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            } else {
+                Text("\(section.completedCount)/\(section.totalCount)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+        }
     }
 }
 
@@ -166,7 +238,6 @@ struct DayHeader: View {
             }
             .frame(width: 56, height: 56)
         }
-        .padding(.horizontal, 20)
     }
 
     private var completionColor: Color {
@@ -176,92 +247,7 @@ struct DayHeader: View {
     }
 }
 
-// MARK: - Collapsible Section
-
-/// Section view with habit stack cards — section header + stack card(s) + task rows.
-/// Renders groups as distinct cards. Single-stack sections collapse the stack header.
-struct DailySectionView: View {
-    let section: DailySection
-    @Environment(\.modelContext) private var modelContext
-
-    private var allCompleted: Bool { section.allCompleted }
-    private var isEmpty: Bool { section.totalCount == 0 }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Section header
-            HStack(alignment: .center) {
-                Text(section.name.uppercased())
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                    .tracking(0.8)
-
-                if isEmpty {
-                    Text("No protocols")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                } else if allCompleted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                    Text("All done")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
-                } else {
-                    Text("\(section.completedCount)/\(section.totalCount)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-
-            // Stack cards — one per group
-            if section.groups.isEmpty || (section.groups.count == 1 && section.groups[0].tasks.isEmpty && isEmpty) {
-                HStack {
-                    Spacer()
-                    Text("Add protocols in My Protocols")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                }
-                .padding(.vertical, 12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 16)
-            } else {
-                ForEach(section.groups) { group in
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Stack header (hidden for single-stack with matching name)
-                        if !shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count) {
-                            HabitStackHeader(
-                                name: group.name,
-                                completedCount: group.completedCount,
-                                totalCount: group.tasks.count,
-                                showRing: true
-                            )
-                            .padding(.horizontal, 12)
-                        }
-
-                        if group.tasks.isEmpty {
-                            EmptyStackPlaceholder()
-                        } else {
-                            ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in
-                                DailyTaskRow(task: task)
-                                if index < group.tasks.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 52)
-                                }
-                            }
-                        }
-                    }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 16)
-                }
-            }
-        }
-    }
-}
+// MARK: - (DailySectionView removed — inlined into DailyInstanceView)
 
 // MARK: - Task Row
 
@@ -278,7 +264,7 @@ struct DailyTaskRow: View {
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 28)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             // Content varies by type
             NavigationLink {
@@ -297,30 +283,60 @@ struct DailyTaskRow: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
     }
 
     // MARK: - Task Content (default behavior)
 
     private var taskContent: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(task.label)
-                        .font(.body)
-                        .foregroundStyle(task.status == "completed" ? .secondary : .primary)
-                        .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(task.label)
+                    .font(.body)
+                    .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                    .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
 
-                    if let time = task.scheduledTime {
-                        Text(time)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.08), in: Capsule())
-                    }
+                if let time = task.scheduledTime {
+                    Text(time)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.08), in: Capsule())
+                }
+            }
+
+            if let subtitle = task.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    // MARK: - Workout Content
+
+    private var workoutContent: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: activityIcon)
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+
+                Text(task.label)
+                    .font(.body)
+                    .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                    .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+            }
+
+            HStack(spacing: 8) {
+                if let duration = task.durationMinutes {
+                    Text("\(duration)m")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color(.systemGray5), in: Capsule())
                 }
 
                 if let subtitle = task.subtitle {
@@ -330,55 +346,6 @@ struct DailyTaskRow: View {
                         .lineLimit(1)
                 }
             }
-
-            Spacer(minLength: 4)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color(.systemGray3))
-        }
-    }
-
-    // MARK: - Workout Content
-
-    private var workoutContent: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: activityIcon)
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-
-                    Text(task.label)
-                        .font(.body)
-                        .foregroundStyle(task.status == "completed" ? .secondary : .primary)
-                        .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
-                }
-
-                HStack(spacing: 8) {
-                    if let duration = task.durationMinutes {
-                        Text("\(duration)m")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color(.systemGray5), in: Capsule())
-                    }
-
-                    if let subtitle = task.subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color(.systemGray3))
         }
     }
 
@@ -444,9 +411,15 @@ struct DailyTaskRow: View {
     private func cycleStatus() {
         withAnimation(.easeInOut(duration: 0.15)) {
             switch task.taskStatus {
-            case .pending: task.status = "completed"; task.completedAt = Date()
-            case .completed: task.status = "skipped"; task.completedAt = Date()
-            case .skipped: task.status = "pending"; task.completedAt = nil
+            case .pending:
+                task.status = "completed"; task.completedAt = Date()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case .completed:
+                task.status = "skipped"; task.completedAt = Date()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case .skipped:
+                task.status = "pending"; task.completedAt = nil
+                UISelectionFeedbackGenerator().selectionChanged()
             }
         }
         SyncService.shared.syncTaskStatus(task)
