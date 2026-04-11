@@ -8,50 +8,49 @@ struct ProtocolDetailView: View {
     let documentId: UUID?
     var dailyTask: DailyTask?
 
-    @State private var detail: ProtocolDetailData?
+    @State private var analytics: ProtocolAnalytics?
+    @State private var history: [DayEntry] = []
     @State private var isLoading = true
-    @Query private var allDocs: [UserDocument]
     @Query private var allProtocols: [UserProtocol]
 
-    private var masterProtocol: UserProtocol? {
-        guard let uuid = UUID(uuidString: protocolId) else { return nil }
-        return allProtocols.first { $0.id == uuid }
+    private var userProtocol: UserProtocol? {
+        allProtocols.first { $0.id.uuidString == protocolId }
+    }
+
+    private var protocolType: String {
+        dailyTask?.type ?? userProtocol?.type ?? "task"
+    }
+
+    private var activityType: String? {
+        dailyTask?.activityType ?? userProtocol?.activityType
     }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // Header card
-                headerCard
-                    .padding(.horizontal, 16)
+            VStack(alignment: .leading, spacing: 20) {
+                // Header
+                protocolHeader
 
-                // Today status
+                // Today status (if navigated from daily task)
                 if let task = dailyTask {
-                    todayCard(task)
-                        .padding(.horizontal, 16)
+                    todayStatusCard(task)
                 }
 
-                // Stats
-                if let stats = detail?.stats, stats.totalDays > 0 {
-                    statsCard(stats)
-                        .padding(.horizontal, 16)
+                // Analytics
+                if let analytics {
+                    ProtocolAnalyticsCard(analytics: analytics, history: history)
+                } else if isLoading {
+                    analyticsPlaceholder
                 }
 
-                // Reference doc
-                if let doc = detail?.document {
-                    documentCard(doc)
-                        .padding(.horizontal, 16)
-                }
+                // Documents
+                ProtocolDocumentsSection(protocolId: protocolId)
 
-                // Change history
-                if let changes = detail?.changes, !changes.isEmpty {
-                    changeLogCard(changes)
-                        .padding(.horizontal, 16)
-                }
-
-                if isLoading {
-                    ProgressView()
-                        .padding(.vertical, 20)
+                // Type-specific section
+                if protocolType == "workout" {
+                    workoutSection
+                } else {
+                    taskSection
                 }
 
                 Spacer(minLength: 40)
@@ -59,10 +58,10 @@ struct ProtocolDetailView: View {
             .padding(.top, 8)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Protocol")
+        .navigationTitle(label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let proto = masterProtocol {
+            if let proto = userProtocol {
                 ToolbarItem(placement: .primaryAction) {
                     NavigationLink {
                         ProtocolEditor(proto: proto)
@@ -73,64 +72,54 @@ struct ProtocolDetailView: View {
                 }
             }
         }
-        .task { await loadDetail() }
+        .task { await loadAnalytics() }
     }
 
     // MARK: - Header
 
-    private var headerCard: some View {
+    private var protocolHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.title2.bold())
+            HStack(spacing: 10) {
+                // Type icon
+                Image(systemName: protocolType == "workout" ? activitySFSymbol : "checkmark.circle")
+                    .font(.title2)
+                    .foregroundStyle(protocolType == "workout" ? .blue : .green)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        (protocolType == "workout" ? Color.blue : Color.green).opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
 
-            if let subtitle {
-                Text(subtitle)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(label)
+                            .font(.title3.weight(.semibold))
 
-            HStack(spacing: 8) {
-                if let section = detail?.sectionName {
-                    Label(section, systemImage: "clock")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.blue.opacity(0.1), in: Capsule())
-                        .foregroundStyle(.blue)
-                }
-                if let group = detail?.groupName {
-                    Text(group)
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color(.systemGray5), in: Capsule())
-                        .foregroundStyle(.secondary)
-                }
-                if let time = detail?.scheduledTime {
-                    Label(time, systemImage: "clock.fill")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.1), in: Capsule())
-                        .foregroundStyle(.purple)
-                }
-            }
+                        Text(protocolType.capitalized)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(protocolType == "workout" ? .blue : .green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                (protocolType == "workout" ? Color.blue : Color.green).opacity(0.1),
+                                in: Capsule()
+                            )
+                    }
 
-            if let firstTracked = detail?.firstTracked {
-                Text("Tracking since \(firstTracked)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Today Status
 
-    private func todayCard(_ task: DailyTask) -> some View {
+    private func todayStatusCard(_ task: DailyTask) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("TODAY")
                 .font(.caption.bold())
@@ -158,128 +147,236 @@ struct ProtocolDetailView: View {
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
     }
 
-    // MARK: - Stats
+    // MARK: - Workout Section
 
-    private func statsCard(_ stats: ProtocolStats) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("STATS")
+    private var workoutSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("WORKOUT DETAILS")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
                 .tracking(0.8)
+                .padding(.horizontal, 20)
 
-            HStack(spacing: 0) {
-                StatCard(value: "\(stats.currentStreak)", label: "Streak", icon: "flame.fill", color: .orange)
-                StatCard(value: "\(stats.completedDays)", label: "Done", icon: "checkmark", color: .green)
-                StatCard(value: "\(Int(stats.completionRate * 100))%", label: "Rate", icon: "chart.bar.fill", color: .blue)
-                StatCard(value: "\(stats.totalDays)d", label: "Tracked", icon: "calendar", color: .purple)
-            }
-        }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
+            VStack(spacing: 0) {
+                // Activity type
+                if let at = activityType {
+                    infoRow(icon: activitySFSymbol, label: "Activity", value: at.capitalized)
+                    Divider().padding(.leading, 52)
+                }
 
-    // MARK: - Document
+                // Duration
+                if let dur = dailyTask?.durationMinutes ?? userProtocol?.durationMinutes {
+                    infoRow(icon: "clock", label: "Estimated", value: "\(dur) min")
+                    Divider().padding(.leading, 52)
+                }
 
-    private func documentCard(_ doc: ProtocolDocRef) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("REFERENCE")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-                .tracking(0.8)
+                // Weekly target
+                if let target = userProtocol?.weeklyTarget {
+                    infoRow(icon: "repeat", label: "Frequency", value: "\(target)x per week")
+                }
 
-            if let localDoc = allDocs.first(where: { $0.id.uuidString == doc.id }) {
-                NavigationLink {
-                    ScrollView {
-                        MarkdownView(content: localDoc.content).padding()
+                Divider().padding(.leading, 16)
+
+                // Start Workout button (placeholder for Phase 2)
+                Button(action: {}) {
+                    HStack {
+                        Image(systemName: "play.fill")
+                        Text("Start Workout")
+                            .font(.body.weight(.semibold))
                     }
-                    .navigationTitle(localDoc.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .background(Color(.systemGroupedBackground))
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "doc.text.fill")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(doc.title)
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text("Tap to view")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .foregroundStyle(.blue)
+            }
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Task Section
+
+    private var taskSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("COMPLETION HISTORY")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .tracking(0.8)
+                .padding(.horizontal, 20)
+
+            if history.isEmpty && !isLoading {
+                VStack(spacing: 6) {
+                    Image(systemName: "chart.bar")
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
+                    Text("No completions yet")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(history.prefix(10).enumerated()), id: \.element.id) { index, entry in
+                        HStack {
+                            Image(systemName: statusIcon(for: entry.status))
+                                .foregroundStyle(statusColor(for: entry.status))
+
+                            Text(entry.date, format: .dateTime.month(.abbreviated).day().weekday(.abbreviated))
+                                .font(.body)
+
+                            Spacer()
+
+                            Text(entry.status.rawValue.capitalized)
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color(.systemGray3))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
+                        if index < min(history.count, 10) - 1 {
+                            Divider().padding(.leading, 52)
+                        }
                     }
                 }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16)
             }
         }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Change Log
+    // MARK: - Helpers
 
-    private func changeLogCard(_ changes: [ProtocolChange]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("CHANGES")
-                .font(.caption.bold())
+    private func infoRow(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundStyle(.blue)
+                .frame(width: 28)
+
+            Text(label)
+                .font(.body)
                 .foregroundStyle(.secondary)
-                .tracking(0.8)
 
-            ForEach(Array(changes.enumerated()), id: \.offset) { _, change in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle()
-                        .fill(Color.blue.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .padding(.top, 6)
+            Spacer()
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(changeDescription(change))
-                            .font(.subheadline)
-                        if let dateStr = change.changedAt {
-                            Text(String(dateStr.prefix(10)))
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-            }
+            Text(value)
+                .font(.body)
         }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
-    private func changeDescription(_ change: ProtocolChange) -> String {
-        let field = change.field.replacingOccurrences(of: "_", with: " ").capitalized
-        if let old = change.oldValue, let new = change.newValue {
-            return "\(field): \(old) → \(new)"
-        } else if let new = change.newValue {
-            return "\(field) set to \(new)"
-        } else if let old = change.oldValue {
-            return "\(field) removed (was \(old))"
+    private var activitySFSymbol: String {
+        switch activityType {
+        case "strength": "figure.strengthtraining.traditional"
+        case "running": "figure.run"
+        case "cycling": "figure.outdoor.cycle"
+        case "hiit": "figure.highintensity.intervaltraining"
+        case "yoga": "figure.yoga"
+        case "flexibility": "figure.flexibility"
+        default: "figure.mixed.cardio"
         }
-        return "\(field) changed"
     }
 
-    // MARK: - Load
+    private func statusIcon(for status: DayStatus) -> String {
+        switch status {
+        case .completed: "checkmark.circle.fill"
+        case .skipped: "minus.circle.fill"
+        default: "circle"
+        }
+    }
 
-    private func loadDetail() async {
+    private func statusColor(for status: DayStatus) -> Color {
+        switch status {
+        case .completed: .green
+        case .skipped: .orange
+        default: Color(.systemGray4)
+        }
+    }
+
+    private var analyticsPlaceholder: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+            Text("Loading analytics...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Data Loading
+
+    private func loadAnalytics() async {
+        guard let token = AuthService.shared.token else {
+            isLoading = false
+            return
+        }
+
+        #if DEBUG
+        let baseURL = "http://localhost:5001"
+        #else
+        let baseURL = "https://dashboardfitness-production.up.railway.app"
+        #endif
+
+        // Fetch analytics
         do {
-            #if DEBUG
-            let url = URL(string: "http://localhost:5001/api/protocols/protocol/\(protocolId)/detail")!
-            #else
-            let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/protocols/protocol/\(protocolId)/detail")!
-            #endif
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            detail = try decoder.decode(ProtocolDetailData.self, from: data)
-        } catch {}
+            var request = URLRequest(url: URL(string: "\(baseURL)/api/protocols/protocol/\(protocolId)/analytics")!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                isLoading = false
+                return
+            }
+
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            analytics = ProtocolAnalytics(
+                currentStreak: json["current_streak"] as? Int ?? 0,
+                longestStreak: json["longest_streak"] as? Int ?? 0,
+                rate7d: json["rate_7d"] as? Double ?? 0,
+                rate30d: json["rate_30d"] as? Double ?? 0,
+                totalCompletions: json["total_completions"] as? Int ?? 0,
+                lastCompleted: json["last_completed"] as? String
+            )
+        } catch {
+            // Silently fail -- show empty state
+        }
+
+        // Fetch history
+        do {
+            var request = URLRequest(url: URL(string: "\(baseURL)/api/protocols/protocol/\(protocolId)/history?limit=30")!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                isLoading = false
+                return
+            }
+
+            let completions = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+
+            history = completions.compactMap { comp in
+                guard let dateStr = comp["date"] as? String,
+                      let date = dateFormatter.date(from: dateStr),
+                      let status = comp["status"] as? String else { return nil }
+                let dayStatus: DayStatus = status == "completed" ? .completed : status == "skipped" ? .skipped : .missed
+                return DayEntry(date: date, status: dayStatus)
+            }
+        } catch {
+            // Silently fail
+        }
+
         isLoading = false
     }
 }
@@ -310,59 +407,26 @@ struct StatusButton: View {
     }
 }
 
-struct StatCard: View {
-    let value: String
-    let label: String
-    let icon: String
-    let color: Color
+// MARK: - Previews
 
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+#Preview("Task Protocol") {
+    NavigationStack {
+        ProtocolDetailView(
+            protocolId: "preview-1",
+            label: "Morning Meditation",
+            subtitle: "10 minutes of mindfulness",
+            documentId: nil
+        )
     }
 }
 
-// MARK: - API Types
-
-struct ProtocolDetailData: Decodable {
-    let id: String
-    let label: String
-    let subtitle: String?
-    let scheduledTime: String?
-    let groupName: String?
-    let sectionName: String?
-    let firstTracked: String?
-    let stats: ProtocolStats
-    let changes: [ProtocolChange]
-    let document: ProtocolDocRef?
-}
-
-struct ProtocolStats: Decodable {
-    let totalDays: Int
-    let completedDays: Int
-    let skippedDays: Int
-    let completionRate: Double
-    let currentStreak: Int
-}
-
-struct ProtocolChange: Decodable {
-    let field: String
-    let oldValue: String?
-    let newValue: String?
-    let changedAt: String?
-}
-
-struct ProtocolDocRef: Decodable {
-    let id: String
-    let title: String
+#Preview("Workout Protocol") {
+    NavigationStack {
+        ProtocolDetailView(
+            protocolId: "preview-2",
+            label: "Bench Day",
+            subtitle: "Upper body strength",
+            documentId: nil
+        )
+    }
 }

@@ -20,24 +20,6 @@ struct SettingsTab: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    NavigationLink {
-                        MasterTemplateEditor()
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("My Protocols")
-                                Text("Edit your daily routine template")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "list.bullet.rectangle.fill")
-                                .foregroundStyle(.blue)
-                        }
-                    }
-                }
-
                 Section("Profile") {
                     HStack(spacing: 14) {
                         ZStack {

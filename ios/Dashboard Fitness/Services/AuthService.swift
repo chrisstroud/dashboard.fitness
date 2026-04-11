@@ -58,6 +58,31 @@ final class AuthService {
         isAuthenticated = true
     }
 
+    // MARK: - Dev Sign In (DEBUG only)
+
+    #if DEBUG
+    func devSignIn() async throws {
+        let url = URL(string: "http://localhost:5001/api/auth/dev")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [:] as [String: String])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw AuthError.serverError
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let result = try decoder.decode(AuthResponse.self, from: data)
+
+        KeychainHelper.save(key: tokenKey, value: result.token)
+        token = result.token
+        isAuthenticated = true
+    }
+    #endif
+
     // MARK: - Sign Out
 
     func signOut() {

@@ -51,7 +51,16 @@ final class UserProtocol {
     var position: Int
     var documentId: UUID?
 
-    @Relationship(deleteRule: .cascade, inverse: \ProtocolCompletion.protocol)
+    // Protocol type system (v2)
+    var type: String = "task"           // "workout" | "task"
+    var activityType: String?           // workout only: strength|running|cycling|yoga|hiit|flexibility|other
+    var durationMinutes: Int?           // estimated duration
+    var weeklyTarget: Int?              // NULL = daily, else N/week
+    var reminderTime: Date?             // time-of-day for notifications
+    var icon: String?                   // SF Symbol name
+    var color: String?                  // system color name
+
+    @Relationship(deleteRule: .cascade, inverse: \ProtocolCompletion.userProtocol)
     var completions: [ProtocolCompletion] = []
 
     init(label: String, subtitle: String? = nil, position: Int = 0) {
@@ -70,16 +79,21 @@ enum TaskStatus: String {
 
 @Model
 final class ProtocolCompletion {
-    @Attribute(.unique) var id: UUID
-    var `protocol`: UserProtocol?
-    var date: Date
-    var status: String
-    var completedAt: Date
+    @Attribute(.unique) var id: UUID = UUID()
+    var userProtocol: UserProtocol?
+    var date: Date = Date()
+    var status: String = "completed"    // "completed" | "skipped"
+    var completedAt: Date?
 
-    init(date: Date, status: String = "completed") {
-        self.id = UUID()
+    // Workout-specific metadata
+    var durationMinutes: Int?           // actual duration
+    var calories: Int?                  // from HealthKit
+    var avgHeartRate: Int?              // from HealthKit
+    var notes: String?
+
+    init(date: Date = Date(), status: String = "completed", completedAt: Date? = nil) {
         self.date = date
         self.status = status
-        self.completedAt = Date()
+        self.completedAt = completedAt
     }
 }

@@ -42,6 +42,7 @@ struct HomeTab: View {
                     .frame(maxHeight: .infinity)
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }
@@ -109,6 +110,20 @@ struct DayHeader: View {
             }
 
             Spacer()
+
+            // My Protocols link
+            NavigationLink {
+                MasterTemplateEditor()
+            } label: {
+                ZStack {
+                    Circle()
+                        .stroke(Color(.systemGray5), lineWidth: 4)
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 56, height: 56)
+            }
 
             // Progress ring
             ZStack {
@@ -495,6 +510,7 @@ struct DailyTaskRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // Status button (same for both types)
             Button(action: cycleStatus) {
                 Image(systemName: statusIcon)
                     .font(.system(size: 22))
@@ -504,6 +520,7 @@ struct DailyTaskRow: View {
             }
             .buttonStyle(.plain)
 
+            // Content varies by type
             NavigationLink {
                 ProtocolDetailView(
                     protocolId: task.sourceProtocolId ?? "",
@@ -513,21 +530,79 @@ struct DailyTaskRow: View {
                     dailyTask: task
                 )
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(task.label)
-                            .font(.body)
-                            .foregroundStyle(task.status == "completed" ? .secondary : .primary)
-                            .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+                if task.type == "workout" {
+                    workoutContent
+                } else {
+                    taskContent
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
 
-                        if let time = task.scheduledTime {
-                            Text(time)
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.blue)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.08), in: Capsule())
-                        }
+    // MARK: - Task Content (default behavior)
+
+    private var taskContent: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(task.label)
+                        .font(.body)
+                        .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                        .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+
+                    if let time = task.scheduledTime {
+                        Text(time)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.08), in: Capsule())
+                    }
+                }
+
+                if let subtitle = task.subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color(.systemGray3))
+        }
+    }
+
+    // MARK: - Workout Content
+
+    private var workoutContent: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: activityIcon)
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+
+                    Text(task.label)
+                        .font(.body)
+                        .foregroundStyle(task.status == "completed" ? .secondary : .primary)
+                        .strikethrough(task.status == "completed", color: .secondary.opacity(0.5))
+                }
+
+                HStack(spacing: 8) {
+                    if let duration = task.durationMinutes {
+                        Text("\(duration)m")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color(.systemGray5), in: Capsule())
                     }
 
                     if let subtitle = task.subtitle {
@@ -537,18 +612,31 @@ struct DailyTaskRow: View {
                             .lineLimit(1)
                     }
                 }
-
-                Spacer(minLength: 4)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color(.systemGray3))
             }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color(.systemGray3))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
     }
+
+    // MARK: - Activity Icon
+
+    private var activityIcon: String {
+        switch task.activityType {
+        case "strength": "figure.strengthtraining.traditional"
+        case "running": "figure.run"
+        case "cycling": "figure.outdoor.cycle"
+        case "hiit": "figure.highintensity.intervaltraining"
+        case "yoga": "figure.yoga"
+        case "flexibility": "figure.flexibility"
+        default: "figure.mixed.cardio"
+        }
+    }
+
+    // MARK: - Status Helpers
 
     private var statusIcon: String {
         switch task.taskStatus {

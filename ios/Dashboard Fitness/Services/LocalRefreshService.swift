@@ -46,6 +46,9 @@ enum LocalRefreshService {
                         existingTask.subtitle = proto.subtitle
                         existingTask.position = proto.position
                         existingTask.documentId = proto.documentId
+                        existingTask.type = proto.type
+                        existingTask.activityType = proto.activityType
+                        existingTask.durationMinutes = proto.durationMinutes
                     } else {
                         // New protocol — add as pending task
                         let task = DailyTask(
@@ -59,6 +62,9 @@ enum LocalRefreshService {
                         task.subtitle = proto.subtitle
                         task.sourceProtocolId = sourceId
                         task.documentId = proto.documentId
+                        task.type = proto.type
+                        task.activityType = proto.activityType
+                        task.durationMinutes = proto.durationMinutes
                         task.instance = instance
                         modelContext.insert(task)
                     }

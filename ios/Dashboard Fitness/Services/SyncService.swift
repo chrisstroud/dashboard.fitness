@@ -118,6 +118,9 @@ final class SyncService {
                             existingTask.label = apiTask.label
                             existingTask.subtitle = apiTask.subtitle
                             existingTask.scheduledTime = apiTask.scheduledTime
+                            existingTask.type = apiTask.type ?? "task"
+                            existingTask.activityType = apiTask.activityType
+                            existingTask.durationMinutes = apiTask.durationMinutes
                         } else {
                             let task = DailyTask(
                                 sectionName: apiSection.name,
@@ -133,6 +136,9 @@ final class SyncService {
                             task.status = apiTask.status
                             task.sourceProtocolId = apiTask.sourceProtocolId
                             if let docId = apiTask.documentId { task.documentId = UUID(uuidString: docId) }
+                            task.type = apiTask.type ?? "task"
+                            task.activityType = apiTask.activityType
+                            task.durationMinutes = apiTask.durationMinutes
                             task.instance = instance
                             modelContext.insert(task)
                         }
@@ -321,11 +327,23 @@ final class SyncService {
                             existing.subtitle = apiProto.subtitle
                             existing.position = apiProto.position
                             if let docId = apiProto.documentId { existing.documentId = UUID(uuidString: docId) }
+                            existing.type = apiProto.type ?? "task"
+                            existing.activityType = apiProto.activityType
+                            existing.durationMinutes = apiProto.durationMinutes
+                            existing.weeklyTarget = apiProto.weeklyTarget
+                            existing.icon = apiProto.icon
+                            existing.color = apiProto.color
                         } else {
                             let newProto = UserProtocol(label: apiProto.label, subtitle: apiProto.subtitle, position: apiProto.position)
                             newProto.id = protoId
                             newProto.group = group
                             if let docId = apiProto.documentId { newProto.documentId = UUID(uuidString: docId) }
+                            newProto.type = apiProto.type ?? "task"
+                            newProto.activityType = apiProto.activityType
+                            newProto.durationMinutes = apiProto.durationMinutes
+                            newProto.weeklyTarget = apiProto.weeklyTarget
+                            newProto.icon = apiProto.icon
+                            newProto.color = apiProto.color
                             modelContext.insert(newProto)
                         }
                     }
@@ -342,6 +360,59 @@ final class SyncService {
 
             for (id, section) in existingSectionById where !seenSectionIds.contains(id) {
                 modelContext.delete(section)
+            }
+
+            try modelContext.save()
+        } catch {
+            lastError = (lastError ?? "") + " " + error.localizedDescription
+        }
+    }
+
+    // MARK: - Protocol Completions
+
+    func syncCompletions(protocolId: String, modelContext: ModelContext) async {
+        do {
+            let url = baseURL.appendingPathComponent("protocols/protocol/\(protocolId)/history")
+                .appending(queryItems: [URLQueryItem(name: "limit", value: "30")])
+            let (data, response) = try await URLSession.shared.data(for: authenticatedRequest(url: url))
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+
+            let apiCompletions = try decoder.decode([APIProtocolCompletion].self, from: data)
+
+            // Fetch the owning UserProtocol
+            guard let protoUUID = UUID(uuidString: protocolId) else { return }
+            let allProtocols = try modelContext.fetch(FetchDescriptor<UserProtocol>())
+            guard let userProtocol = allProtocols.first(where: { $0.id == protoUUID }) else { return }
+
+            // Build a lookup of existing completions by their server-assigned ID
+            let existingCompletions = try modelContext.fetch(FetchDescriptor<ProtocolCompletion>())
+            let existingByServerId = Dictionary(
+                uniqueKeysWithValues: existingCompletions.compactMap { c -> (UUID, ProtocolCompletion)? in
+                    guard c.userProtocol?.id == protoUUID else { return nil }
+                    return (c.id, c)
+                }
+            )
+
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.timeZone = .current
+
+            for apiCompletion in apiCompletions {
+                guard let completionId = UUID(uuidString: apiCompletion.id) else { continue }
+                let date = dateFormatter.date(from: apiCompletion.date) ?? Date()
+
+                if let existing = existingByServerId[completionId] {
+                    existing.status = apiCompletion.status
+                    existing.durationMinutes = apiCompletion.durationMinutes
+                    existing.notes = apiCompletion.notes
+                } else {
+                    let newCompletion = ProtocolCompletion(date: date, status: apiCompletion.status)
+                    newCompletion.id = completionId
+                    newCompletion.durationMinutes = apiCompletion.durationMinutes
+                    newCompletion.notes = apiCompletion.notes
+                    newCompletion.userProtocol = userProtocol
+                    modelContext.insert(newCompletion)
+                }
             }
 
             try modelContext.save()
@@ -373,6 +444,13 @@ private struct APIProtocol: Decodable {
     let subtitle: String?
     let position: Int
     let documentId: String?
+    let type: String?
+    let activityType: String?
+    let durationMinutes: Int?
+    let weeklyTarget: Int?
+    let reminderTime: String?
+    let icon: String?
+    let color: String?
 }
 
 private struct APIFolder: Decodable {
@@ -425,4 +503,15 @@ private struct APIDailyTask: Decodable {
     let scheduledTime: String?
     let documentId: String?
     let status: String
+    let type: String?
+    let activityType: String?
+    let durationMinutes: Int?
+}
+
+private struct APIProtocolCompletion: Decodable {
+    let id: String
+    let date: String
+    let status: String
+    let durationMinutes: Int?
+    let notes: String?
 }

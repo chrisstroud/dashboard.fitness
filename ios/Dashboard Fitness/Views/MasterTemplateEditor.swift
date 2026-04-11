@@ -3,10 +3,16 @@ import SwiftData
 
 struct MasterTemplateEditor: View {
     @Query(sort: \ProtocolSection.position) private var sections: [ProtocolSection]
+    @Query private var allDocuments: [UserDocument]
     @Environment(\.modelContext) private var modelContext
     @State private var showingNewSection = false
     @State private var newSectionName = ""
     @State private var renamingSection: ProtocolSection?
+
+    // For now, treat all documents as "orphans" until protocol-document sync is implemented
+    private var orphanDocs: [UserDocument] {
+        allDocuments
+    }
 
     var body: some View {
         List {
@@ -73,6 +79,38 @@ struct MasterTemplateEditor: View {
                 }
             }
             .onMove { from, to in moveSections(from: from, to: to) }
+
+            // Notes section — orphan documents
+            Section("Notes") {
+                if orphanDocs.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Notes", systemImage: "doc.text")
+                    } description: {
+                        Text("Unattached documents will appear here")
+                    }
+                } else {
+                    ForEach(orphanDocs) { doc in
+                        NavigationLink {
+                            LinkedDocView(documentId: doc.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text.fill")
+                                    .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(doc.title)
+                                        .font(.body)
+                                    if !doc.content.isEmpty {
+                                        Text(doc.content.prefix(60))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         .navigationTitle("My Protocols")
         .toolbar {
@@ -145,9 +183,7 @@ struct MasterTemplateEditor: View {
 struct GroupEditor: View {
     @Bindable var group: ProtocolGroup
     @Environment(\.modelContext) private var modelContext
-    @State private var showingNewProtocol = false
-    @State private var newLabel = ""
-    @State private var newSubtitle = ""
+    @State private var showingCreateSheet = false
 
     var body: some View {
         List {
@@ -181,8 +217,18 @@ struct GroupEditor: View {
                         )
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(proto.label)
-                                .font(.body)
+                            HStack(spacing: 6) {
+                                Text(proto.label)
+                                    .font(.body)
+                                if proto.type == "workout" {
+                                    Text("Workout")
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(.blue)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.blue.opacity(0.1), in: Capsule())
+                                }
+                            }
                             if let subtitle = proto.subtitle {
                                 Text(subtitle)
                                     .font(.caption)
@@ -207,7 +253,7 @@ struct GroupEditor: View {
                 }
 
                 Button {
-                    showingNewProtocol = true
+                    showingCreateSheet = true
                 } label: {
                     Label("Add Protocol", systemImage: "plus.circle.fill")
                         .font(.subheadline)
@@ -224,17 +270,13 @@ struct GroupEditor: View {
             }
         }
         .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
-        .alert("New Protocol", isPresented: $showingNewProtocol) {
-            TextField("Label", text: $newLabel)
-            TextField("Subtitle (optional)", text: $newSubtitle)
-            Button("Add") {
-                guard !newLabel.isEmpty else { return }
-                let proto = UserProtocol(label: newLabel, subtitle: newSubtitle.isEmpty ? nil : newSubtitle, position: group.protocols.count)
-                proto.group = group
-                modelContext.insert(proto)
-                newLabel = ""; newSubtitle = ""
+        .sheet(isPresented: $showingCreateSheet) {
+            CreateProtocolSheet(groupId: group.id) {
+                // Refresh protocols from API after creation
+                Task {
+                    await SyncService.shared.syncAll(modelContext: modelContext)
+                }
             }
-            Button("Cancel", role: .cancel) {}
         }
     }
 }

@@ -11,9 +11,6 @@ struct ContentView: View {
                 Tab("Today", systemImage: "checkmark.square") {
                     HomeTab()
                 }
-                Tab("Docs", systemImage: "doc.text") {
-                    DocsTab()
-                }
                 Tab("History", systemImage: "calendar") {
                     HistoryTab()
                 }

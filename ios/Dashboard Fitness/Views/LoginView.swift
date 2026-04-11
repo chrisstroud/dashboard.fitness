@@ -60,6 +60,27 @@ struct LoginView: View {
                     }
                 }
 
+                #if DEBUG
+                Button(action: {
+                    isSigningIn = true
+                    errorMessage = nil
+                    Task {
+                        do {
+                            try await AuthService.shared.devSignIn()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                        isSigningIn = false
+                    }
+                }) {
+                    Text("Dev Sign In (localhost)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                }
+                .disabled(isSigningIn)
+                #endif
+
                 Spacer()
                     .frame(height: 80)
             }

@@ -85,6 +85,11 @@ final class DailyTask {
     var status: String
     var completedAt: Date?
 
+    // Protocol type system (v2)
+    var type: String = "task"           // "workout" | "task"
+    var activityType: String?           // workout only
+    var durationMinutes: Int?           // estimated
+
     init(sectionName: String, sectionPosition: Int, groupName: String, groupPosition: Int, label: String, position: Int) {
         self.id = UUID()
         self.sectionName = sectionName
@@ -99,4 +104,13 @@ final class DailyTask {
     var taskStatus: TaskStatus {
         TaskStatus(rawValue: status) ?? .pending
     }
+
+    var protocolType: ProtocolType {
+        ProtocolType(rawValue: type) ?? .task
+    }
+}
+
+enum ProtocolType: String {
+    case task
+    case workout
 }
