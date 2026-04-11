@@ -11,6 +11,7 @@
 | File | Name | Status | Date |
 |------|------|--------|------|
 | `briefs/brief-protocols-v2.md` | Protocols v2 — First-Class Atomic Protocols | Approved | 2026-04-11 |
+| `briefs/brief-habit-stacks.md` | Habit Stacks — Atomic Habits-Driven Protocol Hierarchy | Draft | 2026-04-11 |
 
 ## Active PRDs
 
