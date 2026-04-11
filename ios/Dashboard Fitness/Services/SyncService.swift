@@ -60,7 +60,13 @@ final class SyncService {
 
     private func syncTodayInstance(modelContext: ModelContext) async {
         do {
-            let url = baseURL.appendingPathComponent("protocols/today")
+            // Send the client's local date to avoid UTC timezone mismatch
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let todayStr = formatter.string(from: Date())
+            var components = URLComponents(url: baseURL.appendingPathComponent("protocols/today"), resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "date", value: todayStr)]
+            let url = components.url!
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 

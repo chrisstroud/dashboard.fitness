@@ -311,7 +311,13 @@ def list_all():
 
 @protocols_bp.route("/today", methods=["GET"])
 def today_view():
-    instance = get_or_create_daily_instance(TEMP_USER_ID, date.today())
+    # Accept client date to avoid timezone mismatch (server is UTC)
+    date_str = request.args.get("date")
+    if date_str:
+        target_date = date.fromisoformat(date_str)
+    else:
+        target_date = date.today()
+    instance = get_or_create_daily_instance(TEMP_USER_ID, target_date)
     return jsonify(_serialize_instance(instance))
 
 
