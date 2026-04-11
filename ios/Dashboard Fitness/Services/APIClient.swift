@@ -6,7 +6,7 @@ actor APIClient {
     #if DEBUG
     private var baseURL = URL(string: "http://localhost:5001")!
     #else
-    private var baseURL = URL(string: "https://dashboard-fitness-api.up.railway.app")!
+    private var baseURL = URL(string: "https://dashboardfitness-production.up.railway.app")!
     #endif
 
     private let decoder: JSONDecoder = {

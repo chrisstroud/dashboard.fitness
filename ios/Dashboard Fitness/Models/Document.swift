@@ -63,7 +63,7 @@ final class UserDocument {
     func weekCompletionCount() -> Int {
         let calendar = Calendar.current
         let today = Date()
-        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+        guard let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) else { return 0 }
         return completions.filter { $0.date >= weekStart }.count
     }
 

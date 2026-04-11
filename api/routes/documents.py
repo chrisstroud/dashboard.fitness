@@ -20,8 +20,7 @@ def list_folders():
     query = Folder.query.filter_by(user_id=TEMP_USER_ID)
     if parent_id:
         query = query.filter_by(parent_id=parent_id)
-    else:
-        query = query.filter(Folder.parent_id.is_(None))
+    # Return all folders by default so iOS can build the full tree
     folders = query.order_by(Folder.position).all()
     return jsonify([
         {
@@ -135,6 +134,9 @@ def get_document(doc_id: str):
         "title": d.title,
         "content": d.content,
         "folder_id": d.folder_id,
+        "weekly_target": d.weekly_target,
+        "duration_minutes": d.duration_minutes,
+        "activity_type": d.activity_type,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
     })

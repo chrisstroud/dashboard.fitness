@@ -131,7 +131,7 @@ struct SettingsTab: View {
             #if DEBUG
             let url = URL(string: "http://localhost:5001/api/users/me")!
             #else
-            let url = URL(string: "https://dashboard-fitness-api.up.railway.app/api/users/me")!
+            let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/users/me")!
             #endif
             let (data, _) = try await URLSession.shared.data(from: url)
             let decoder = JSONDecoder()
@@ -150,7 +150,7 @@ struct SettingsTab: View {
             #if DEBUG
             let url = URL(string: "http://localhost:5001/api/users/me")!
             #else
-            let url = URL(string: "https://dashboard-fitness-api.up.railway.app/api/users/me")!
+            let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/users/me")!
             #endif
             var request = URLRequest(url: url)
             request.httpMethod = "PUT"

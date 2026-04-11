@@ -11,7 +11,7 @@ final class SyncService {
     #if DEBUG
     private let baseURL = URL(string: "http://localhost:5001/api")!
     #else
-    private let baseURL = URL(string: "https://dashboard-fitness-api.up.railway.app/api")!
+    private let baseURL = URL(string: "https://dashboardfitness-production.up.railway.app/api")!
     #endif
 
     private let decoder: JSONDecoder = {
@@ -19,6 +19,30 @@ final class SyncService {
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
     }()
+
+    private let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        return e
+    }()
+
+    // MARK: - Task Status Sync
+
+    func syncTaskStatus(_ task: DailyTask) {
+        Task {
+            do {
+                let url = baseURL.appendingPathComponent("protocols/daily/task/\(task.id.uuidString)")
+                var request = URLRequest(url: url)
+                request.httpMethod = "PUT"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                let body: [String: String] = ["status": task.status]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let _ = try await URLSession.shared.data(for: request)
+            } catch {
+                // Status saved locally; will retry on next sync
+            }
+        }
+    }
 
     func syncAll(modelContext: ModelContext) async {
         isSyncing = true
@@ -70,7 +94,15 @@ final class SyncService {
                         seenTaskIds.insert(taskId)
 
                         if let existingTask = instance.tasks.first(where: { $0.id == taskId }) {
-                            existingTask.status = apiTask.status
+                            // Only update from server if local status hasn't been changed
+                            // (preserve local completions that haven't synced yet)
+                            if existingTask.status == "pending" || existingTask.status == apiTask.status {
+                                existingTask.status = apiTask.status
+                            }
+                            // Always update metadata
+                            existingTask.label = apiTask.label
+                            existingTask.subtitle = apiTask.subtitle
+                            existingTask.scheduledTime = apiTask.scheduledTime
                         } else {
                             let task = DailyTask(
                                 sectionName: apiSection.name,
@@ -179,12 +211,18 @@ final class SyncService {
                 if let existingDoc = existingById[docId] {
                     existingDoc.title = fullDoc.title
                     existingDoc.content = fullDoc.content
+                    existingDoc.weeklyTarget = fullDoc.weeklyTarget
+                    existingDoc.durationMinutes = fullDoc.durationMinutes
+                    existingDoc.activityType = fullDoc.activityType
                     if let folderIdStr = fullDoc.folderId, let folderId = UUID(uuidString: folderIdStr) {
                         existingDoc.folder = foldersById[folderId]
                     }
                 } else {
                     let newDoc = UserDocument(title: fullDoc.title, content: fullDoc.content)
                     newDoc.id = docId
+                    newDoc.weeklyTarget = fullDoc.weeklyTarget
+                    newDoc.durationMinutes = fullDoc.durationMinutes
+                    newDoc.activityType = fullDoc.activityType
                     if let folderIdStr = fullDoc.folderId, let folderId = UUID(uuidString: folderIdStr) {
                         newDoc.folder = foldersById[folderId]
                     }
@@ -340,6 +378,9 @@ private struct APIDocumentFull: Decodable {
     let title: String
     let content: String
     let folderId: String?
+    let weeklyTarget: Int?
+    let durationMinutes: Int?
+    let activityType: String?
 }
 
 private struct APIDailyInstance: Decodable {

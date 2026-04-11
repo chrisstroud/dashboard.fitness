@@ -144,6 +144,7 @@ struct ProtocolDetailView: View {
                         task.status = task.status == "completed" ? "pending" : "completed"
                         task.completedAt = task.status == "pending" ? nil : Date()
                     }
+                    SyncService.shared.syncTaskStatus(task)
                 }
                 StatusButton(label: "Skip", icon: "forward.circle.fill", color: .orange,
                              isActive: task.status == "skipped") {
@@ -151,6 +152,7 @@ struct ProtocolDetailView: View {
                         task.status = task.status == "skipped" ? "pending" : "skipped"
                         task.completedAt = task.status == "pending" ? nil : Date()
                     }
+                    SyncService.shared.syncTaskStatus(task)
                 }
             }
         }
@@ -271,7 +273,7 @@ struct ProtocolDetailView: View {
             #if DEBUG
             let url = URL(string: "http://localhost:5001/api/protocols/protocol/\(protocolId)/detail")!
             #else
-            let url = URL(string: "https://dashboard-fitness-api.up.railway.app/api/protocols/protocol/\(protocolId)/detail")!
+            let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/protocols/protocol/\(protocolId)/detail")!
             #endif
             let (data, _) = try await URLSession.shared.data(from: url)
             let decoder = JSONDecoder()

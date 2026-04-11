@@ -63,6 +63,7 @@ final class WorkoutManager {
             let completion = WorkoutCompletion(date: Date())
             completion.document = doc
             modelContext.insert(completion)
+            try? modelContext.save()
         }
 
         let summary = WorkoutSummary(

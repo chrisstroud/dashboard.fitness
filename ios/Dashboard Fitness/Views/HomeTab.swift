@@ -3,6 +3,7 @@ import SwiftData
 
 struct HomeTab: View {
     @Query(sort: \DailyInstance.date, order: .reverse) private var instances: [DailyInstance]
+    @Environment(\.modelContext) private var modelContext
 
     private var todayInstance: DailyInstance? {
         let calendar = Calendar.current
@@ -14,13 +15,29 @@ struct HomeTab: View {
             Group {
                 if let instance = todayInstance {
                     DailyInstanceView(instance: instance)
-                } else {
+                } else if SyncService.shared.isSyncing {
                     VStack(spacing: 16) {
                         ProgressView()
                             .controlSize(.large)
                         Text("Setting up your day...")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    ContentUnavailableView {
+                        Label("No Data Yet", systemImage: "checkmark.square")
+                    } description: {
+                        Text(SyncService.shared.lastError != nil
+                             ? "Could not connect to server. Check your connection and try again."
+                             : "Your daily protocols will appear here once they're set up.")
+                    } actions: {
+                        Button("Retry") {
+                            Task {
+                                await SyncService.shared.syncAll(modelContext: modelContext)
+                            }
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .frame(maxHeight: .infinity)
                 }
@@ -218,6 +235,7 @@ struct WorkoutSlots: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showStartConfirm = false
     @State private var showActiveWorkout = false
+    @State private var showAlreadyActive = false
 
     private var weekCount: Int { doc.weekCompletionCount() }
     private var target: Int { doc.weeklyTarget ?? 1 }
@@ -287,6 +305,11 @@ struct WorkoutSlots: View {
                     ActiveWorkoutView(document: doc)
                 }
             }
+            .alert("Workout In Progress", isPresented: $showAlreadyActive) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Finish or cancel \"\(WorkoutManager.shared.activeDocument?.title ?? "your current workout")\" first.")
+            }
 
             Divider().padding(.leading, 52)
         }
@@ -296,7 +319,7 @@ struct WorkoutSlots: View {
         if isThisActive {
             showActiveWorkout = true
         } else if WorkoutManager.shared.isActive {
-            // Another workout active
+            showAlreadyActive = true
         } else {
             showStartConfirm = true
         }
@@ -363,6 +386,7 @@ struct CollapsibleSectionView: View {
             for task in section.allTasks {
                 task.status = newStatus
                 task.completedAt = newStatus == "pending" ? nil : Date()
+                SyncService.shared.syncTaskStatus(task)
             }
             // Auto-collapse/expand
             for group in section.groups {
@@ -458,6 +482,7 @@ struct CollapsibleGroupCard: View {
             for task in group.tasks {
                 task.status = newStatus
                 task.completedAt = newStatus == "pending" ? nil : Date()
+                SyncService.shared.syncTaskStatus(task)
             }
         }
     }
@@ -549,6 +574,7 @@ struct DailyTaskRow: View {
             case .skipped: task.status = "pending"; task.completedAt = nil
             }
         }
+        SyncService.shared.syncTaskStatus(task)
     }
 }
 

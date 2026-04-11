@@ -6,6 +6,7 @@ struct MasterTemplateEditor: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showingNewSection = false
     @State private var newSectionName = ""
+    @State private var renamingSection: ProtocolSection?
 
     var body: some View {
         List {
@@ -95,6 +96,19 @@ struct MasterTemplateEditor: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Rename Section", isPresented: Binding(
+            get: { renamingSection != nil },
+            set: { if !$0 { renamingSection = nil } }
+        )) {
+            TextField("Section name", text: $newSectionName)
+            Button("Rename") {
+                guard !newSectionName.isEmpty, let section = renamingSection else { return }
+                section.name = newSectionName
+                renamingSection = nil
+                newSectionName = ""
+            }
+            Button("Cancel", role: .cancel) { renamingSection = nil }
+        }
     }
 
     private func moveSections(from: IndexSet, to: Int) {
@@ -122,7 +136,7 @@ struct MasterTemplateEditor: View {
 
     private func renameSection(_ section: ProtocolSection) {
         newSectionName = section.name
-        showingNewSection = true
+        renamingSection = section
     }
 }
 

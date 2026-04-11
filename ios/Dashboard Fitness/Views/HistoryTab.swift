@@ -101,7 +101,7 @@ struct CalendarGrid: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 0) {
-                ForEach(dayNames, id: \.self) { name in
+                ForEach(Array(dayNames.enumerated()), id: \.offset) { _, name in
                     Text(name)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)

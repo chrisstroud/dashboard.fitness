@@ -37,6 +37,13 @@ struct ContentView: View {
                 NavigationStack {
                     ActiveWorkoutView(document: doc)
                 }
+            } else {
+                VStack(spacing: 16) {
+                    Text("No active workout")
+                        .font(.headline)
+                    Button("Dismiss") { showActiveWorkout = false }
+                        .buttonStyle(.bordered)
+                }
             }
         }
     }
