@@ -60,6 +60,9 @@ def refresh_today(user_id: str) -> DailyInstance:
                     task.position = proto.position
                     task.scheduled_time = proto.scheduled_time
                     task.document_id = proto.document_id
+                    task.type = proto.type
+                    task.activity_type = proto.activity_type
+                    task.duration_minutes = proto.duration_minutes
                     # status and completed_at are NOT changed
                 else:
                     # New protocol → add as pending
@@ -76,6 +79,9 @@ def refresh_today(user_id: str) -> DailyInstance:
                         position=proto.position,
                         scheduled_time=proto.scheduled_time,
                         document_id=proto.document_id,
+                        type=proto.type,
+                        activity_type=proto.activity_type,
+                        duration_minutes=proto.duration_minutes,
                         status="pending",
                     )
                     db.session.add(task)
@@ -117,6 +123,9 @@ def _stamp_instance(user_id: str, target_date: date) -> DailyInstance:
                     position=proto.position,
                     scheduled_time=proto.scheduled_time,
                     document_id=proto.document_id,
+                    type=proto.type,
+                    activity_type=proto.activity_type,
+                    duration_minutes=proto.duration_minutes,
                     status="pending",
                 )
                 db.session.add(task)

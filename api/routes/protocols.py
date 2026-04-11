@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time, timezone as tz
 
 from flask import Blueprint, g, jsonify, request
 
 from models import db
+from models.document import Document
 from models.protocol import (
     DailyInstance, DailyTask, Protocol, ProtocolChangeLog,
-    ProtocolGroup, ProtocolSection,
+    ProtocolCompletion, ProtocolDocument, ProtocolGroup, ProtocolSection,
 )
+from services.analytics import compute_analytics
 from services.auth import decode_token
 from services.daily import get_or_create_daily_instance, refresh_today
 
@@ -164,6 +166,13 @@ def add_protocol(group_id: str):
         position=data.get("position", 0),
         scheduled_time=_parse_time(data.get("scheduled_time")),
         document_id=data.get("document_id"),
+        type=data.get("type", "task"),
+        activity_type=data.get("activity_type"),
+        duration_minutes=data.get("duration_minutes"),
+        weekly_target=data.get("weekly_target"),
+        reminder_time=_parse_time(data.get("reminder_time")),
+        icon=data.get("icon"),
+        color=data.get("color"),
     )
     db.session.add(proto)
     _commit_and_refresh()
@@ -174,6 +183,10 @@ def add_protocol(group_id: str):
 def update_protocol(protocol_id: str):
     proto = db.get_or_404(Protocol, protocol_id)
     data = request.get_json()
+
+    # Reject type changes after creation
+    if "type" in data and data["type"] != proto.type:
+        return jsonify({"error": "Cannot change protocol type after creation"}), 400
 
     tracked_fields = {
         "label": ("label", str),
@@ -209,6 +222,18 @@ def update_protocol(protocol_id: str):
         proto.scheduled_time = _parse_time(data.get("scheduled_time"))
     if "group_id" in data:
         proto.group_id = data["group_id"]
+    if "activity_type" in data:
+        proto.activity_type = data["activity_type"]
+    if "duration_minutes" in data:
+        proto.duration_minutes = data["duration_minutes"]
+    if "weekly_target" in data:
+        proto.weekly_target = data["weekly_target"]
+    if "reminder_time" in data:
+        proto.reminder_time = _parse_time(data.get("reminder_time"))
+    if "icon" in data:
+        proto.icon = data["icon"]
+    if "color" in data:
+        proto.color = data["color"]
     _commit_and_refresh()
     return jsonify({"id": proto.id, "label": proto.label})
 
@@ -275,6 +300,13 @@ def protocol_detail(protocol_id: str):
         "id": proto.id,
         "label": proto.label,
         "subtitle": proto.subtitle,
+        "type": proto.type,
+        "activity_type": proto.activity_type,
+        "duration_minutes": proto.duration_minutes,
+        "weekly_target": proto.weekly_target,
+        "reminder_time": proto.reminder_time.strftime("%H:%M") if proto.reminder_time else None,
+        "icon": proto.icon,
+        "color": proto.color,
         "scheduled_time": proto.scheduled_time.strftime("%H:%M") if proto.scheduled_time else None,
         "group_name": proto.group.name if proto.group else None,
         "section_name": proto.group.section.name if proto.group and proto.group.section else None,
@@ -346,9 +378,40 @@ def update_task(task_id: str):
     task = db.get_or_404(DailyTask, task_id)
     data = request.get_json()
     if "status" in data:
-        task.status = data["status"]
-        from datetime import datetime, timezone as tz
-        task.completed_at = datetime.now(tz.utc) if data["status"] != "pending" else None
+        old_status = task.status
+        new_status = data["status"]
+        task.status = new_status
+        now = datetime.now(tz.utc)
+        task.completed_at = now if new_status != "pending" else None
+
+        # Dual-write: sync to protocol_completions when task has a source protocol
+        if task.source_protocol_id:
+            today = task.instance.date if task.instance else date.today()
+            if new_status == "completed" and old_status != "completed":
+                existing = ProtocolCompletion.query.filter_by(
+                    protocol_id=task.source_protocol_id,
+                    user_id=g.user_id,
+                    date=today,
+                ).first()
+                if existing:
+                    existing.status = "completed"
+                    existing.completed_at = now
+                else:
+                    completion = ProtocolCompletion(
+                        protocol_id=task.source_protocol_id,
+                        user_id=g.user_id,
+                        date=today,
+                        status="completed",
+                        completed_at=now,
+                    )
+                    db.session.add(completion)
+            elif new_status != "completed" and old_status == "completed":
+                ProtocolCompletion.query.filter_by(
+                    protocol_id=task.source_protocol_id,
+                    user_id=g.user_id,
+                    date=today,
+                ).delete()
+
     db.session.commit()
     return jsonify({"id": task.id, "status": task.status})
 
@@ -358,7 +421,6 @@ def bulk_update_tasks():
     data = request.get_json()
     task_ids = data.get("task_ids", [])
     status = data.get("status", "completed")
-    from datetime import datetime, timezone as tz
     now = datetime.now(tz.utc) if status != "pending" else None
     for tid in task_ids:
         task = DailyTask.query.get(tid)
@@ -386,6 +448,199 @@ def history():
     ])
 
 
+# ── Protocol Completions (Story 2.1) ────────────────────────────────
+
+def _verify_protocol_ownership(protocol_id: str) -> Protocol | None:
+    """Return the protocol if it belongs to the current user, else None."""
+    proto = Protocol.query.get(protocol_id)
+    if not proto or not proto.group or not proto.group.section:
+        return None
+    if proto.group.section.user_id != g.user_id:
+        return None
+    return proto
+
+
+@protocols_bp.route("/protocol/<protocol_id>/complete", methods=["POST"])
+def complete_protocol(protocol_id: str):
+    """Mark a protocol complete for today (upsert)."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    data = request.get_json() or {}
+    today = date.today()
+    now = datetime.now(tz.utc)
+
+    existing = ProtocolCompletion.query.filter_by(
+        protocol_id=protocol_id, user_id=g.user_id, date=today,
+    ).first()
+
+    if existing:
+        existing.status = data.get("status", "completed")
+        existing.completed_at = now
+        existing.duration_minutes = data.get("duration_minutes")
+        existing.calories = data.get("calories")
+        existing.avg_heart_rate = data.get("avg_heart_rate")
+        existing.notes = data.get("notes")
+        completion = existing
+    else:
+        completion = ProtocolCompletion(
+            protocol_id=protocol_id,
+            user_id=g.user_id,
+            date=today,
+            status=data.get("status", "completed"),
+            completed_at=now,
+            duration_minutes=data.get("duration_minutes"),
+            calories=data.get("calories"),
+            avg_heart_rate=data.get("avg_heart_rate"),
+            notes=data.get("notes"),
+        )
+        db.session.add(completion)
+
+    db.session.commit()
+    return jsonify(_serialize_completion(completion)), 201
+
+
+@protocols_bp.route("/protocol/<protocol_id>/complete", methods=["DELETE"])
+def undo_completion(protocol_id: str):
+    """Undo a protocol completion for a given date (defaults to today)."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    date_str = request.args.get("date")
+    target_date = date.fromisoformat(date_str) if date_str else date.today()
+
+    ProtocolCompletion.query.filter_by(
+        protocol_id=protocol_id, user_id=g.user_id, date=target_date,
+    ).delete()
+    db.session.commit()
+    return "", 204
+
+
+@protocols_bp.route("/protocol/<protocol_id>/history", methods=["GET"])
+def completion_history(protocol_id: str):
+    """Completion history for a protocol."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    from_str = request.args.get("from")
+    to_str = request.args.get("to")
+    limit = int(request.args.get("limit", 90))
+
+    query = ProtocolCompletion.query.filter_by(
+        protocol_id=protocol_id, user_id=g.user_id,
+    )
+    if from_str:
+        query = query.filter(ProtocolCompletion.date >= date.fromisoformat(from_str))
+    if to_str:
+        query = query.filter(ProtocolCompletion.date <= date.fromisoformat(to_str))
+
+    completions = (
+        query.order_by(ProtocolCompletion.date.desc())
+        .limit(limit)
+        .all()
+    )
+    return jsonify([_serialize_completion(c) for c in completions])
+
+
+# ── Analytics (Story 2.2) ──────────────────────────────────────────
+
+@protocols_bp.route("/protocol/<protocol_id>/analytics", methods=["GET"])
+def protocol_analytics(protocol_id: str):
+    """Return streak, completion rates, and totals for a protocol."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+    return jsonify(compute_analytics(protocol_id, g.user_id))
+
+
+# ── Protocol-Document Links (Story 2.3) ────────────────────────────
+
+@protocols_bp.route("/protocol/<protocol_id>/documents", methods=["POST"])
+def attach_document(protocol_id: str):
+    """Attach a document to a protocol."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    data = request.get_json()
+    document_id = data.get("document_id")
+    if not document_id:
+        return jsonify({"error": "document_id is required"}), 400
+
+    # Verify document belongs to user
+    doc = Document.query.get(document_id)
+    if not doc or doc.user_id != g.user_id:
+        return jsonify({"error": "Document not found"}), 404
+
+    # Check for existing link
+    existing = ProtocolDocument.query.filter_by(
+        protocol_id=protocol_id, document_id=document_id,
+    ).first()
+    if existing:
+        return jsonify({"error": "Document already attached"}), 409
+
+    link = ProtocolDocument(
+        protocol_id=protocol_id,
+        document_id=document_id,
+        position=data.get("position", 0),
+    )
+    db.session.add(link)
+    db.session.commit()
+    return jsonify({
+        "id": link.id,
+        "protocol_id": link.protocol_id,
+        "document_id": link.document_id,
+        "position": link.position,
+    }), 201
+
+
+@protocols_bp.route(
+    "/protocol/<protocol_id>/documents/<document_id>", methods=["DELETE"],
+)
+def detach_document(protocol_id: str, document_id: str):
+    """Detach a document from a protocol (does NOT delete the document)."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    ProtocolDocument.query.filter_by(
+        protocol_id=protocol_id, document_id=document_id,
+    ).delete()
+    db.session.commit()
+    return "", 204
+
+
+@protocols_bp.route("/protocol/<protocol_id>/documents", methods=["GET"])
+def list_attached_documents(protocol_id: str):
+    """List documents attached to a protocol, ordered by position."""
+    proto = _verify_protocol_ownership(protocol_id)
+    if not proto:
+        return jsonify({"error": "Protocol not found"}), 404
+
+    links = (
+        ProtocolDocument.query
+        .filter_by(protocol_id=protocol_id)
+        .order_by(ProtocolDocument.position)
+        .all()
+    )
+    result = []
+    for link in links:
+        doc = link.document
+        if doc:
+            result.append({
+                "id": doc.id,
+                "title": doc.title,
+                "content": doc.content,
+                "position": link.position,
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+            })
+    return jsonify(result)
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 def _parse_time(val: str | None) -> time | None:
@@ -393,6 +648,21 @@ def _parse_time(val: str | None) -> time | None:
         return None
     parts = val.split(":")
     return time(int(parts[0]), int(parts[1]))
+
+
+def _serialize_completion(c: ProtocolCompletion) -> dict:
+    return {
+        "id": c.id,
+        "protocol_id": c.protocol_id,
+        "user_id": c.user_id,
+        "date": c.date.isoformat(),
+        "status": c.status,
+        "completed_at": c.completed_at.isoformat() if c.completed_at else None,
+        "duration_minutes": c.duration_minutes,
+        "calories": c.calories,
+        "avg_heart_rate": c.avg_heart_rate,
+        "notes": c.notes,
+    }
 
 
 def _serialize_section(s: ProtocolSection) -> dict:
@@ -410,6 +680,13 @@ def _serialize_section(s: ProtocolSection) -> dict:
                         "id": p.id, "label": p.label, "subtitle": p.subtitle,
                         "position": p.position, "document_id": p.document_id,
                         "scheduled_time": p.scheduled_time.strftime("%H:%M") if p.scheduled_time else None,
+                        "type": p.type,
+                        "activity_type": p.activity_type,
+                        "duration_minutes": p.duration_minutes,
+                        "weekly_target": p.weekly_target,
+                        "reminder_time": p.reminder_time.strftime("%H:%M") if p.reminder_time else None,
+                        "icon": p.icon,
+                        "color": p.color,
                     }
                     for p in g.protocols
                 ],
@@ -438,6 +715,9 @@ def _serialize_instance(instance: DailyInstance) -> dict:
             "scheduled_time": task.scheduled_time.strftime("%H:%M") if task.scheduled_time else None,
             "document_id": task.document_id, "status": task.status,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "type": task.type,
+            "activity_type": task.activity_type,
+            "duration_minutes": task.duration_minutes,
         })
 
     result_sections = []

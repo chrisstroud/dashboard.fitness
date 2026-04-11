@@ -6,6 +6,7 @@ from models import db
 from datetime import date, timedelta
 
 from models.document import Document, Folder, WorkoutCompletion
+from models.protocol import ProtocolDocument
 from services.auth import decode_token
 
 documents_bp = Blueprint("documents", __name__)
@@ -196,6 +197,31 @@ def delete_document(doc_id: str):
     db.session.delete(doc)
     db.session.commit()
     return jsonify({"deleted": True})
+
+
+# ── Orphan Documents ────────────────────────────────────────────────
+
+@documents_bp.route("/orphans", methods=["GET"])
+def orphan_documents():
+    """Documents not attached to any protocol via protocol_documents."""
+    linked_ids = db.session.query(ProtocolDocument.document_id).distinct()
+    docs = (
+        Document.query
+        .filter_by(user_id=g.user_id)
+        .filter(~Document.id.in_(linked_ids))
+        .order_by(Document.updated_at.desc())
+        .all()
+    )
+    return jsonify([
+        {
+            "id": d.id,
+            "title": d.title,
+            "folder_id": d.folder_id,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+        }
+        for d in docs
+    ])
 
 
 # ── Workout Completions ──────────────────────────────────────────────

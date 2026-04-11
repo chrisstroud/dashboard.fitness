@@ -10,6 +10,39 @@ from services.auth import validate_apple_token, create_token
 auth_bp = Blueprint("auth", __name__)
 
 
+@auth_bp.route("/dev", methods=["POST"])
+def dev_sign_in():
+    """DEV ONLY — create/fetch a dev user without Apple auth.
+
+    Only works when SECRET_KEY is the dev default. Rejected in production.
+    """
+    from flask import current_app
+
+    if current_app.config["SECRET_KEY"] != "dev-secret-key":
+        return jsonify({"error": "Dev login disabled in production"}), 403
+
+    user = User.query.filter_by(id="dev-user").first()
+    if not user:
+        user = User(
+            display_name="Dev User",
+            email="dev@dashboard.fitness",
+        )
+        user.id = "dev-user"
+        db.session.add(user)
+        db.session.commit()
+
+    token = create_token(user.id)
+    return jsonify({
+        "token": token,
+        "user": {
+            "id": user.id,
+            "display_name": user.display_name,
+            "email": user.email,
+            "timezone": user.timezone,
+        },
+    })
+
+
 @auth_bp.route("/apple", methods=["POST"])
 def apple_sign_in():
     """Exchange an Apple identity token for a session JWT."""
