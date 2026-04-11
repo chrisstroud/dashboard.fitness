@@ -10,7 +10,7 @@ print("Testing raw connection...", flush=True)
 try:
     import psycopg2
     # Parse the URL for psycopg2
-    conn = psycopg2.connect(db_url, connect_timeout=5)
+    conn = psycopg2.connect(db_url, connect_timeout=15)
     print("Connected to Postgres!", flush=True)
     cur = conn.cursor()
     cur.execute("SELECT version()")
