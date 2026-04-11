@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, time, timezone
 
+from uuid import uuid4
+
 from models import db
 
 
@@ -61,6 +63,13 @@ class Protocol(db.Model):
     created_at: datetime = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    type: str = db.Column(db.String(20), nullable=False, default="task", server_default="task")
+    activity_type: str = db.Column(db.String(50), nullable=True)  # workout only: strength|running|cycling|yoga|hiit|flexibility|other
+    duration_minutes: int = db.Column(db.Integer, nullable=True)
+    weekly_target: int = db.Column(db.Integer, nullable=True)  # NULL = daily
+    reminder_time: time = db.Column(db.Time, nullable=True)
+    icon: str = db.Column(db.String(50), nullable=True)  # SF Symbol name
+    color: str = db.Column(db.String(20), nullable=True)  # hex or system color name
 
     group = db.relationship("ProtocolGroup", back_populates="protocols")
     document = db.relationship("Document")
@@ -132,5 +141,81 @@ class DailyTask(db.Model):
     document_id: str = db.Column(db.String(36), nullable=True)
     status: str = db.Column(db.String(20), nullable=False, default="pending")
     completed_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
+    type: str = db.Column(db.String(20), nullable=False, default="task", server_default="task")
+    activity_type: str = db.Column(db.String(50), nullable=True)
+    duration_minutes: int = db.Column(db.Integer, nullable=True)
 
     instance = db.relationship("DailyInstance", back_populates="tasks")
+
+
+# ── Completion History ───────────────────────────────────────────────
+
+
+class ProtocolCompletion(db.Model):
+    """Tracks completion of a protocol for a given user on a given date."""
+
+    __tablename__ = "protocol_completions"
+
+    id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    protocol_id: str = db.Column(
+        db.String(36), db.ForeignKey("protocols.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: str = db.Column(
+        db.String(36), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    date: date = db.Column(db.Date, nullable=False)
+    status: str = db.Column(db.String(20), nullable=False, default="completed")
+    completed_at: datetime = db.Column(db.DateTime(timezone=True))
+    duration_minutes: int = db.Column(db.Integer, nullable=True)
+    calories: int = db.Column(db.Integer, nullable=True)
+    avg_heart_rate: int = db.Column(db.Integer, nullable=True)
+    notes: str = db.Column(db.Text, nullable=True)
+    metadata_: dict = db.Column("metadata", db.JSON, nullable=True)
+    created_at: datetime = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+
+    __table_args__ = (
+        db.UniqueConstraint("protocol_id", "user_id", "date", name="uq_protocol_completion_per_day"),
+    )
+
+    protocol = db.relationship(
+        "Protocol",
+        backref=db.backref("completions", cascade="all, delete-orphan", lazy="dynamic"),
+    )
+    user = db.relationship(
+        "User",
+        backref=db.backref("protocol_completions", lazy="dynamic"),
+    )
+
+
+# ── Protocol–Document Link ───────────────────────────────────────────
+
+
+class ProtocolDocument(db.Model):
+    """Links a protocol to one or more documents (many-to-many with ordering)."""
+
+    __tablename__ = "protocol_documents"
+
+    id: str = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    protocol_id: str = db.Column(
+        db.String(36), db.ForeignKey("protocols.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: str = db.Column(
+        db.String(36), db.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    position: int = db.Column(db.Integer, nullable=False, default=0)
+    created_at: datetime = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
+
+    __table_args__ = (
+        db.UniqueConstraint("protocol_id", "document_id", name="uq_protocol_document"),
+    )
+
+    protocol = db.relationship(
+        "Protocol",
+        backref=db.backref(
+            "protocol_documents", cascade="all, delete-orphan", order_by="ProtocolDocument.position"
+        ),
+    )
+    document = db.relationship(
+        "Document",
+        backref=db.backref("protocol_documents", lazy="dynamic"),
+    )
