@@ -35,10 +35,10 @@
 | 2 | API Layer — Completion, Analytics & Document Linking | Not Started | 2026-04-11 |
 | 3 | UI — Protocol Detail View with Analytics & Documents | Not Started | 2026-04-11 |
 | 4 | UI — Type-Aware Today View & Navigation Cleanup | Not Started | 2026-04-11 |
-| 5 | API — Batch Reorder + Stack Deletion Endpoints | Not Started | 2026-04-11 |
-| 6 | UI — Habit Stack Cards + Page Parity | Not Started | 2026-04-11 |
-| 7 | Drag-and-Drop Reorder + Position Sync | Not Started | 2026-04-11 |
-| 8 | Stack Management + Polish | Not Started | 2026-04-11 |
+| 5 | API — Batch Reorder + Stack Deletion Endpoints | Complete | 2026-04-11 |
+| 6 | UI — Habit Stack Cards + Page Parity | Complete | 2026-04-11 |
+| 7 | Drag-and-Drop Reorder + Position Sync | Complete | 2026-04-11 |
+| 8 | Stack Management + Polish | In Progress | 2026-04-11 |
 
 ## Active Stories
 
@@ -58,15 +58,15 @@
 | 4.1 | Type-Aware DailyTaskRow | 4 | Not Started | 2026-04-11 |
 | 4.2 | Remove Docs Tab + Orphan Docs in MasterTemplateEditor | 4 | Not Started | 2026-04-11 |
 | 4.3 | SyncService Updates — Completions + Protocol-Documents | 4 | Not Started | 2026-04-11 |
-| 5.1 | Batch Reorder Endpoint | 5 | Not Started | 2026-04-11 |
-| 5.2 | Stack Deletion Endpoint | 5 | Not Started | 2026-04-11 |
-| 6.1 | Shared HabitStackCard + HabitStackHeader Components | 6 | Not Started | 2026-04-11 |
-| 6.2 | MasterTemplateEditor Stack Card Layer | 6 | Not Started | 2026-04-11 |
-| 6.3 | HomeTab Group-Level Rendering + mergedSections Restore | 6 | Not Started | 2026-04-11 |
-| 6.4 | CreateProtocolSheet Stack Picker | 6 | Not Started | 2026-04-11 |
-| 7.1 | Three-Level onMove + Edit Mode on MasterTemplateEditor | 7 | Not Started | 2026-04-11 |
-| 7.2 | SyncService.syncPositions() + Conflict Handling | 7 | Not Started | 2026-04-11 |
-| 8.1 | Stack CRUD — Create, Rename, Delete from Context Menus | 8 | Not Started | 2026-04-11 |
+| 5.1 | Batch Reorder Endpoint | 5 | Complete | 2026-04-11 |
+| 5.2 | Stack Deletion Endpoint | 5 | Complete | 2026-04-11 |
+| 6.1 | Shared HabitStackCard + HabitStackHeader Components | 6 | Complete | 2026-04-11 |
+| 6.2 | MasterTemplateEditor Stack Card Layer | 6 | Complete | 2026-04-11 |
+| 6.3 | HomeTab Group-Level Rendering + mergedSections Restore | 6 | Complete | 2026-04-11 |
+| 6.4 | CreateProtocolSheet Stack Picker | 6 | Complete | 2026-04-11 |
+| 7.1 | Three-Level onMove + Edit Mode on MasterTemplateEditor | 7 | Complete | 2026-04-11 |
+| 7.2 | SyncService.syncPositions() + Conflict Handling | 7 | Complete | 2026-04-11 |
+| 8.1 | Stack CRUD — Create, Rename, Delete from Context Menus | 8 | Complete | 2026-04-11 |
 | 8.2 | Cross-Moves + Completion Ring + Haptics | 8 | Not Started | 2026-04-11 |
 
 ---
