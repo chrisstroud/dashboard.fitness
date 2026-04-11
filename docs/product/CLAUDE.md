@@ -25,6 +25,7 @@
 | File | Name | Status | Date |
 |------|------|--------|------|
 | `architecture/arch-protocols-v2.md` | Protocols v2 — First-Class Atomic Protocols | Approved | 2026-04-11 |
+| `architecture/arch-habit-stacks.md` | Habit Stacks — Section → Stack → Protocol Hierarchy | Draft | 2026-04-11 |
 
 ## Active Epics
 
