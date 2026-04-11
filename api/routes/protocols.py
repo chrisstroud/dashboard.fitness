@@ -73,6 +73,8 @@ def create_section():
 @protocols_bp.route("/sections/<section_id>", methods=["PUT"])
 def update_section(section_id: str):
     section = db.get_or_404(ProtocolSection, section_id)
+    if section.user_id != g.user_id:
+        return jsonify({"error": "Not found"}), 404
     data = request.get_json()
     if "name" in data:
         section.name = data["name"]
@@ -85,6 +87,8 @@ def update_section(section_id: str):
 @protocols_bp.route("/sections/<section_id>", methods=["DELETE"])
 def delete_section(section_id: str):
     section = db.get_or_404(ProtocolSection, section_id)
+    if section.user_id != g.user_id:
+        return jsonify({"error": "Not found"}), 404
     db.session.delete(section)
     _commit_and_refresh()
     return jsonify({"deleted": True})
@@ -94,7 +98,7 @@ def delete_section(section_id: str):
 def reorder_sections():
     data = request.get_json()
     for item in data.get("order", []):
-        section = ProtocolSection.query.get(item["id"])
+        section = db.session.get(ProtocolSection, item["id"])
         if section:
             section.position = item["position"]
     _commit_and_refresh()
@@ -105,7 +109,9 @@ def reorder_sections():
 
 @protocols_bp.route("/sections/<section_id>/groups", methods=["POST"])
 def create_group(section_id: str):
-    db.get_or_404(ProtocolSection, section_id)
+    section = db.get_or_404(ProtocolSection, section_id)
+    if section.user_id != g.user_id:
+        return jsonify({"error": "Not found"}), 404
     data = request.get_json()
     # Idempotent: if client provides an id and it already exists, return it
     client_id = data.get("id")
@@ -181,7 +187,7 @@ def delete_group(group_id: str):
 def reorder_groups():
     data = request.get_json()
     for item in data.get("order", []):
-        group = ProtocolGroup.query.get(item["id"])
+        group = db.session.get(ProtocolGroup, item["id"])
         if group:
             group.position = item["position"]
             if "section_id" in item:
@@ -222,7 +228,9 @@ def batch_reorder():
 
 @protocols_bp.route("/groups/<group_id>/protocols", methods=["POST"])
 def add_protocol(group_id: str):
-    db.get_or_404(ProtocolGroup, group_id)
+    group = db.get_or_404(ProtocolGroup, group_id)
+    if not group.section or group.section.user_id != g.user_id:
+        return jsonify({"error": "Not found"}), 404
     data = request.get_json()
     proto = Protocol(
         group_id=group_id, label=data["label"],
@@ -487,7 +495,7 @@ def bulk_update_tasks():
     status = data.get("status", "completed")
     now = datetime.now(tz.utc) if status != "pending" else None
     for tid in task_ids:
-        task = DailyTask.query.get(tid)
+        task = db.session.get(DailyTask, tid)
         if task:
             task.status = status
             task.completed_at = now
@@ -516,7 +524,7 @@ def history():
 
 def _verify_protocol_ownership(protocol_id: str) -> Protocol | None:
     """Return the protocol if it belongs to the current user, else None."""
-    proto = Protocol.query.get(protocol_id)
+    proto = db.session.get(Protocol, protocol_id)
     if not proto or not proto.group or not proto.group.section:
         return None
     if proto.group.section.user_id != g.user_id:
@@ -736,26 +744,26 @@ def _serialize_section(s: ProtocolSection) -> dict:
         "position": s.position,
         "groups": [
             {
-                "id": g.id,
-                "name": g.name,
-                "position": g.position,
+                "id": grp.id,
+                "name": grp.name,
+                "position": grp.position,
                 "protocols": [
                     {
-                        "id": p.id, "label": p.label, "subtitle": p.subtitle,
-                        "position": p.position, "document_id": p.document_id,
-                        "scheduled_time": p.scheduled_time.strftime("%H:%M") if p.scheduled_time else None,
-                        "type": p.type,
-                        "activity_type": p.activity_type,
-                        "duration_minutes": p.duration_minutes,
-                        "weekly_target": p.weekly_target,
-                        "reminder_time": p.reminder_time.strftime("%H:%M") if p.reminder_time else None,
-                        "icon": p.icon,
-                        "color": p.color,
+                        "id": proto.id, "label": proto.label, "subtitle": proto.subtitle,
+                        "position": proto.position, "document_id": proto.document_id,
+                        "scheduled_time": proto.scheduled_time.strftime("%H:%M") if proto.scheduled_time else None,
+                        "type": proto.type,
+                        "activity_type": proto.activity_type,
+                        "duration_minutes": proto.duration_minutes,
+                        "weekly_target": proto.weekly_target,
+                        "reminder_time": proto.reminder_time.strftime("%H:%M") if proto.reminder_time else None,
+                        "icon": proto.icon,
+                        "color": proto.color,
                     }
-                    for p in g.protocols
+                    for proto in sorted(grp.protocols, key=lambda p: p.position)
                 ],
             }
-            for g in s.groups
+            for grp in sorted(s.groups, key=lambda g: g.position)
         ],
     }
 
