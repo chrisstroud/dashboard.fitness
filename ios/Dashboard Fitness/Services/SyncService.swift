@@ -26,13 +26,22 @@ final class SyncService {
         return e
     }()
 
+    /// Build a URLRequest with the auth token attached.
+    private func authenticatedRequest(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        if let token = AuthService.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
     // MARK: - Task Status Sync
 
     func syncTaskStatus(_ task: DailyTask) {
         Task {
             do {
                 let url = baseURL.appendingPathComponent("protocols/daily/task/\(task.id.uuidString)")
-                var request = URLRequest(url: url)
+                var request = authenticatedRequest(url: url)
                 request.httpMethod = "PUT"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let body: [String: String] = ["status": task.status]
@@ -67,7 +76,7 @@ final class SyncService {
             var components = URLComponents(url: baseURL.appendingPathComponent("protocols/today"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name: "date", value: todayStr)]
             let url = components.url!
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: authenticatedRequest(url: url))
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
             let apiInstance = try decoder.decode(APIDailyInstance.self, from: data)
@@ -147,7 +156,7 @@ final class SyncService {
     private func syncFolders(modelContext: ModelContext) async {
         do {
             let url = baseURL.appendingPathComponent("documents/folders")
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: authenticatedRequest(url: url))
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
             let apiFolders = try decoder.decode([APIFolder].self, from: data)
@@ -188,7 +197,7 @@ final class SyncService {
     private func syncDocuments(modelContext: ModelContext) async {
         do {
             let url = baseURL.appendingPathComponent("documents")
-            let (listData, listResponse) = try await URLSession.shared.data(from: url)
+            let (listData, listResponse) = try await URLSession.shared.data(for: authenticatedRequest(url: url))
             guard let http = listResponse as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
             let apiDocList = try decoder.decode([APIDocumentSummary].self, from: listData)
@@ -211,7 +220,7 @@ final class SyncService {
                 seenIds.insert(docId)
 
                 let detailURL = baseURL.appendingPathComponent("documents/\(apiDoc.id)")
-                let (detailData, _) = try await URLSession.shared.data(from: detailURL)
+                let (detailData, _) = try await URLSession.shared.data(for: authenticatedRequest(url: detailURL))
                 let fullDoc = try decoder.decode(APIDocumentFull.self, from: detailData)
 
                 if let existingDoc = existingById[docId] {
@@ -248,7 +257,7 @@ final class SyncService {
     private func syncProtocols(modelContext: ModelContext) async {
         do {
             let url = baseURL.appendingPathComponent("protocols/sections")
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: authenticatedRequest(url: url))
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
 
             let apiSections = try decoder.decode([APISection].self, from: data)

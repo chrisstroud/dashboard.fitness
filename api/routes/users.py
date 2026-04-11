@@ -1,23 +1,31 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from models import db
 from models.user import User
+from services.auth import decode_token
 
 users_bp = Blueprint("users", __name__)
 
-TEMP_USER_ID = "chris"
+
+@users_bp.before_request
+def _require_authentication():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        payload = decode_token(auth_header[7:])
+        g.user_id = payload["sub"]
+    except Exception:
+        return jsonify({"error": "Invalid or expired token"}), 401
 
 
 @users_bp.route("/me", methods=["GET"])
 def get_profile():
-    user = User.query.get(TEMP_USER_ID)
+    user = db.session.get(User, g.user_id)
     if not user:
-        # Auto-create for dev
-        user = User(id=TEMP_USER_ID, display_name="Chris", timezone="America/Los_Angeles")
-        db.session.add(user)
-        db.session.commit()
+        return jsonify({"error": "User not found"}), 404
 
     return jsonify({
         "id": user.id,
@@ -30,10 +38,9 @@ def get_profile():
 
 @users_bp.route("/me", methods=["PUT"])
 def update_profile():
-    user = User.query.get(TEMP_USER_ID)
+    user = db.session.get(User, g.user_id)
     if not user:
-        user = User(id=TEMP_USER_ID)
-        db.session.add(user)
+        return jsonify({"error": "User not found"}), 404
 
     data = request.get_json()
     if "display_name" in data:

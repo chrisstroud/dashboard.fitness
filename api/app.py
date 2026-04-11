@@ -19,6 +19,7 @@ def create_app(config_class: type = Config) -> Flask:
     migrate.init_app(app, db, directory="migrations")
     CORS(app)
 
+    from routes.auth import auth_bp
     from routes.health import health_bp
     from routes.workouts import workouts_bp
     from routes.sessions import sessions_bp
@@ -27,6 +28,7 @@ def create_app(config_class: type = Config) -> Flask:
     from routes.documents import documents_bp
     from routes.users import users_bp
 
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(health_bp)
     app.register_blueprint(workouts_bp, url_prefix="/api/workouts")
     app.register_blueprint(sessions_bp, url_prefix="/api/sessions")

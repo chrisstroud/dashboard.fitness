@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from models import db
 from datetime import date, timedelta
 
 from models.document import Document, Folder, WorkoutCompletion
+from services.auth import decode_token
 
 documents_bp = Blueprint("documents", __name__)
 
-TEMP_USER_ID = "chris"
+
+@documents_bp.before_request
+def _require_authentication():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        payload = decode_token(auth_header[7:])
+        g.user_id = payload["sub"]
+    except Exception:
+        return jsonify({"error": "Invalid or expired token"}), 401
 
 
 # MARK: - Folders
@@ -17,7 +28,7 @@ TEMP_USER_ID = "chris"
 @documents_bp.route("/folders", methods=["GET"])
 def list_folders():
     parent_id = request.args.get("parent_id")
-    query = Folder.query.filter_by(user_id=TEMP_USER_ID)
+    query = Folder.query.filter_by(user_id=g.user_id)
     if parent_id:
         query = query.filter_by(parent_id=parent_id)
     # Return all folders by default so iOS can build the full tree
@@ -37,7 +48,7 @@ def list_folders():
 def create_folder():
     data = request.get_json()
     folder = Folder(
-        user_id=TEMP_USER_ID,
+        user_id=g.user_id,
         name=data["name"],
         parent_id=data.get("parent_id"),
         position=data.get("position", 0),
@@ -73,13 +84,13 @@ def delete_folder(folder_id: str):
 def folder_contents(folder_id: str):
     subfolders = (
         Folder.query
-        .filter_by(user_id=TEMP_USER_ID, parent_id=folder_id)
+        .filter_by(user_id=g.user_id, parent_id=folder_id)
         .order_by(Folder.position)
         .all()
     )
     docs = (
         Document.query
-        .filter_by(user_id=TEMP_USER_ID, folder_id=folder_id)
+        .filter_by(user_id=g.user_id, folder_id=folder_id)
         .order_by(Document.title)
         .all()
     )
@@ -107,7 +118,7 @@ def list_documents():
     folder_id = request.args.get("folder_id")
     root_only = request.args.get("root")
 
-    query = Document.query.filter_by(user_id=TEMP_USER_ID)
+    query = Document.query.filter_by(user_id=g.user_id)
     if folder_id:
         query = query.filter_by(folder_id=folder_id)
     elif root_only:
@@ -146,7 +157,7 @@ def get_document(doc_id: str):
 def create_document():
     data = request.get_json()
     doc = Document(
-        user_id=TEMP_USER_ID,
+        user_id=g.user_id,
         title=data["title"],
         content=data.get("content", ""),
         folder_id=data.get("folder_id"),
@@ -193,7 +204,7 @@ def delete_document(doc_id: str):
 def workout_status():
     """Get all workout docs with weekly completion counts."""
     # Find the Workouts folder
-    folder = Folder.query.filter_by(user_id=TEMP_USER_ID, name="Workouts").first()
+    folder = Folder.query.filter_by(user_id=g.user_id, name="Workouts").first()
     if not folder:
         return jsonify([])
 
@@ -207,12 +218,12 @@ def workout_status():
     for doc in docs:
         week_completions = WorkoutCompletion.query.filter(
             WorkoutCompletion.document_id == doc.id,
-            WorkoutCompletion.user_id == TEMP_USER_ID,
+            WorkoutCompletion.user_id == g.user_id,
             WorkoutCompletion.date >= week_start,
         ).count()
 
         today_done = WorkoutCompletion.query.filter_by(
-            document_id=doc.id, user_id=TEMP_USER_ID, date=today,
+            document_id=doc.id, user_id=g.user_id, date=today,
         ).first() is not None
 
         result.append({
@@ -231,7 +242,7 @@ def toggle_workout(doc_id: str):
     """Toggle workout completion for today."""
     today = date.today()
     existing = WorkoutCompletion.query.filter_by(
-        user_id=TEMP_USER_ID, document_id=doc_id, date=today,
+        user_id=g.user_id, document_id=doc_id, date=today,
     ).first()
 
     if existing:
@@ -239,7 +250,7 @@ def toggle_workout(doc_id: str):
         db.session.commit()
         return jsonify({"completed_today": False})
     else:
-        completion = WorkoutCompletion(user_id=TEMP_USER_ID, document_id=doc_id, date=today)
+        completion = WorkoutCompletion(user_id=g.user_id, document_id=doc_id, date=today)
         db.session.add(completion)
         db.session.commit()
         return jsonify({"completed_today": True}), 201

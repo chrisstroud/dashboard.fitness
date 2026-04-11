@@ -2,24 +2,35 @@ from __future__ import annotations
 
 from datetime import date, time
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from models import db
 from models.protocol import (
     DailyInstance, DailyTask, Protocol, ProtocolChangeLog,
     ProtocolGroup, ProtocolSection,
 )
+from services.auth import decode_token
 from services.daily import get_or_create_daily_instance, refresh_today
 
 protocols_bp = Blueprint("protocols", __name__)
 
-TEMP_USER_ID = "chris"
+
+@protocols_bp.before_request
+def _require_authentication():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        payload = decode_token(auth_header[7:])
+        g.user_id = payload["sub"]
+    except Exception:
+        return jsonify({"error": "Invalid or expired token"}), 401
 
 
 def _commit_and_refresh():
     """Commit DB changes and refresh today's daily instance to match master."""
     db.session.commit()
-    refresh_today(TEMP_USER_ID)
+    refresh_today(g.user_id)
 
 
 # ── Sections CRUD ────────────────────────────────────────────────────
@@ -28,7 +39,7 @@ def _commit_and_refresh():
 def list_sections():
     sections = (
         ProtocolSection.query
-        .filter_by(user_id=TEMP_USER_ID)
+        .filter_by(user_id=g.user_id)
         .order_by(ProtocolSection.position)
         .all()
     )
@@ -38,9 +49,9 @@ def list_sections():
 @protocols_bp.route("/sections", methods=["POST"])
 def create_section():
     data = request.get_json()
-    count = ProtocolSection.query.filter_by(user_id=TEMP_USER_ID).count()
+    count = ProtocolSection.query.filter_by(user_id=g.user_id).count()
     section = ProtocolSection(
-        user_id=TEMP_USER_ID,
+        user_id=g.user_id,
         name=data["name"],
         position=data.get("position", count),
     )
@@ -300,7 +311,7 @@ def list_all():
     """Return full hierarchy: sections → groups → protocols."""
     sections = (
         ProtocolSection.query
-        .filter_by(user_id=TEMP_USER_ID)
+        .filter_by(user_id=g.user_id)
         .order_by(ProtocolSection.position)
         .all()
     )
@@ -317,14 +328,14 @@ def today_view():
         target_date = date.fromisoformat(date_str)
     else:
         target_date = date.today()
-    instance = get_or_create_daily_instance(TEMP_USER_ID, target_date)
+    instance = get_or_create_daily_instance(g.user_id, target_date)
     return jsonify(_serialize_instance(instance))
 
 
 @protocols_bp.route("/daily/<date_str>", methods=["GET"])
 def daily_view(date_str: str):
     target_date = date.fromisoformat(date_str)
-    instance = DailyInstance.query.filter_by(user_id=TEMP_USER_ID, date=target_date).first()
+    instance = DailyInstance.query.filter_by(user_id=g.user_id, date=target_date).first()
     if not instance:
         return jsonify({"error": "No daily instance"}), 404
     return jsonify(_serialize_instance(instance))
@@ -361,7 +372,7 @@ def bulk_update_tasks():
 @protocols_bp.route("/history", methods=["GET"])
 def history():
     instances = (
-        DailyInstance.query.filter_by(user_id=TEMP_USER_ID)
+        DailyInstance.query.filter_by(user_id=g.user_id)
         .order_by(DailyInstance.date.desc()).limit(90).all()
     )
     return jsonify([

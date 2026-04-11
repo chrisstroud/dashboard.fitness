@@ -7,6 +7,7 @@ struct SettingsTab: View {
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var showSaved = false
+    @State private var showSignOutConfirm = false
 
     private let commonTimezones = [
         "America/New_York", "America/Chicago", "America/Denver",
@@ -74,18 +75,21 @@ struct SettingsTab: View {
                 }
 
                 Section("Account") {
-                    Button(action: {}) {
+                    Button(role: .destructive) {
+                        showSignOutConfirm = true
+                    } label: {
                         HStack {
-                            Image(systemName: "apple.logo")
-                                .font(.title3)
-                            Text("Sign in with Apple")
-                            Spacer()
-                            Text("Coming soon")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Sign Out")
                         }
                     }
-                    .foregroundStyle(.primary)
+                    .confirmationDialog("Sign Out", isPresented: $showSignOutConfirm) {
+                        Button("Sign Out", role: .destructive) {
+                            AuthService.shared.signOut()
+                        }
+                    } message: {
+                        Text("Your data is saved on the server and will sync back when you sign in again.")
+                    }
                 }
 
                 Section {
@@ -126,6 +130,14 @@ struct SettingsTab: View {
         return tz.replacingOccurrences(of: "_", with: " ")
     }
 
+    private func authRequest(url: URL) -> URLRequest {
+        var req = URLRequest(url: url)
+        if let token = AuthService.shared.token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return req
+    }
+
     private func loadProfile() async {
         do {
             #if DEBUG
@@ -133,7 +145,7 @@ struct SettingsTab: View {
             #else
             let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/users/me")!
             #endif
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, _) = try await URLSession.shared.data(for: authRequest(url: url))
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             let profile = try decoder.decode(UserProfile.self, from: data)
@@ -152,7 +164,7 @@ struct SettingsTab: View {
             #else
             let url = URL(string: "https://dashboardfitness-production.up.railway.app/api/users/me")!
             #endif
-            var request = URLRequest(url: url)
+            var request = authRequest(url: url)
             request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode([

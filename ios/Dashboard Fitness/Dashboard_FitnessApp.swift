@@ -33,12 +33,26 @@ struct Dashboard_FitnessApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .task {
-                    let context = sharedModelContainer.mainContext
-                    await SyncService.shared.syncAll(modelContext: context)
-                }
+            RootView()
         }
         .modelContainer(sharedModelContainer)
+    }
+}
+
+struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        Group {
+            if AuthService.shared.isAuthenticated {
+                ContentView()
+                    .task {
+                        await SyncService.shared.syncAll(modelContext: modelContext)
+                    }
+            } else {
+                LoginView()
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: AuthService.shared.isAuthenticated)
     }
 }
