@@ -35,6 +35,54 @@ final class SyncService {
         return request
     }
 
+    // MARK: - Position Sync
+
+    func syncPositions(
+        sections: [ProtocolSection]? = nil,
+        groups: [ProtocolGroup]? = nil,
+        protocols: [UserProtocol]? = nil
+    ) {
+        Task {
+            do {
+                var body: [String: Any] = [:]
+                if let sections {
+                    body["sections"] = sections.map {
+                        ["id": $0.id.uuidString, "position": $0.position]
+                    }
+                }
+                if let groups {
+                    body["groups"] = groups.map {
+                        var dict: [String: Any] = ["id": $0.id.uuidString, "position": $0.position]
+                        if let sectionId = $0.section?.id.uuidString {
+                            dict["section_id"] = sectionId
+                        }
+                        return dict
+                    }
+                }
+                if let protocols {
+                    body["protocols"] = protocols.map {
+                        var dict: [String: Any] = ["id": $0.id.uuidString, "position": $0.position]
+                        if let groupId = $0.group?.id.uuidString {
+                            dict["group_id"] = groupId
+                        }
+                        return dict
+                    }
+                }
+
+                guard !body.isEmpty else { return }
+
+                let url = baseURL.appendingPathComponent("protocols/reorder")
+                var request = authenticatedRequest(url: url)
+                request.httpMethod = "PATCH"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                _ = try await URLSession.shared.data(for: request)
+            } catch {
+                // Positions saved locally; server will catch up on next sync
+            }
+        }
+    }
+
     // MARK: - Task Status Sync
 
     func syncTaskStatus(_ task: DailyTask) {

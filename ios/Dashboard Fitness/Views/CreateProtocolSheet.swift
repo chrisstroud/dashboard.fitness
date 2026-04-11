@@ -4,6 +4,8 @@ import SwiftData
 struct CreateProtocolSheet: View {
     /// Pre-selected section (nil = show picker, user chooses)
     var initialSection: ProtocolSection?
+    /// Pre-selected stack (nil = auto-select first in section)
+    var initialStack: ProtocolGroup?
     let onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +13,7 @@ struct CreateProtocolSheet: View {
     @Query(sort: \ProtocolSection.position) private var sections: [ProtocolSection]
 
     @State private var selectedSectionId: UUID?
+    @State private var selectedGroupId: UUID?
     @State private var protocolType: ProtocolType = .task
     @State private var label = ""
     @State private var subtitle = ""
@@ -23,10 +26,18 @@ struct CreateProtocolSheet: View {
         sections.first { $0.id == selectedSectionId }
     }
 
+    private var selectedGroup: ProtocolGroup? {
+        selectedSection?.groups.first { $0.id == selectedGroupId }
+    }
+
+    private var sectionHasMultipleStacks: Bool {
+        (selectedSection?.groups.count ?? 0) > 1
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                // Section picker (only if not pre-selected)
+                // Section + stack picker
                 if initialSection == nil {
                     Section("Add to") {
                         Picker("Section", selection: $selectedSectionId) {
@@ -35,6 +46,21 @@ struct CreateProtocolSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .onChange(of: selectedSectionId) { _, newValue in
+                            if let section = sections.first(where: { $0.id == newValue }) {
+                                selectedGroupId = section.sortedGroups.first?.id
+                            }
+                        }
+
+                        // Stack picker — only when section has multiple stacks
+                        if sectionHasMultipleStacks && initialStack == nil {
+                            Picker("Habit Stack", selection: $selectedGroupId) {
+                                ForEach(selectedSection?.sortedGroups ?? []) { group in
+                                    Text(group.name).tag(group.id as UUID?)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
                     }
                 }
 
@@ -92,6 +118,7 @@ struct CreateProtocolSheet: View {
             }
             .onAppear {
                 selectedSectionId = initialSection?.id ?? sections.first?.id
+                selectedGroupId = initialStack?.id ?? selectedSection?.sortedGroups.first?.id
             }
         }
     }
@@ -102,9 +129,11 @@ struct CreateProtocolSheet: View {
         guard let section = selectedSection else { return }
         isSaving = true
 
-        // Find or create the default group for this section
+        // Use selected group, or fall back to first group in section
         let group: ProtocolGroup
-        if let existing = section.groups.first {
+        if let selected = selectedGroup {
+            group = selected
+        } else if let existing = section.groups.first {
             group = existing
         } else {
             let newGroup = ProtocolGroup(name: section.name, position: 0)

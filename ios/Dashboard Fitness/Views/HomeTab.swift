@@ -54,7 +54,7 @@ struct DailyInstanceView: View {
     @Query(sort: \ProtocolSection.position) private var masterSections: [ProtocolSection]
 
     /// Merge master template sections with daily tasks so every section appears,
-    /// even empty ones. Deduplicates by name so we never show the same section twice.
+    /// even empty ones. Merges at the group (stack) level for full hierarchy.
     private var mergedSections: [DailySection] {
         let taskSections = instance.tasksBySections()
         let taskSectionByName = Dictionary(uniqueKeysWithValues: taskSections.map { ($0.name, $0) })
@@ -67,9 +67,21 @@ struct DailyInstanceView: View {
             seenNames.insert(master.name)
 
             if let existing = taskSectionByName[master.name] {
-                result.append(existing)
+                // Merge: start with task section, add any master groups that have no tasks
+                var section = existing
+                let existingGroupNames = Set(section.groups.map(\.name))
+                for masterGroup in master.sortedGroups where !existingGroupNames.contains(masterGroup.name) {
+                    section.groups.append(DailyGroup(name: masterGroup.name, position: masterGroup.position, tasks: []))
+                }
+                section.groups.sort { $0.position < $1.position }
+                result.append(section)
             } else {
-                result.append(DailySection(name: master.name, position: master.position))
+                // Section exists in master but has no daily tasks — show with empty groups
+                var section = DailySection(name: master.name, position: master.position)
+                section.groups = master.sortedGroups.map {
+                    DailyGroup(name: $0.name, position: $0.position, tasks: [])
+                }
+                result.append(section)
             }
         }
 
@@ -166,15 +178,14 @@ struct DayHeader: View {
 
 // MARK: - Collapsible Section
 
-/// Flat section view — section header + task rows directly (no group sublevel).
-/// Matches the one-level layout of My Protocols.
+/// Section view with habit stack cards — section header + stack card(s) + task rows.
+/// Renders groups as distinct cards. Single-stack sections collapse the stack header.
 struct DailySectionView: View {
     let section: DailySection
     @Environment(\.modelContext) private var modelContext
 
     private var allCompleted: Bool { section.allCompleted }
     private var isEmpty: Bool { section.totalCount == 0 }
-    private var tasks: [DailyTask] { section.allTasks }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -206,8 +217,8 @@ struct DailySectionView: View {
             }
             .padding(.horizontal, 20)
 
-            // Tasks card (flat — no group sublevel)
-            if isEmpty {
+            // Stack cards — one per group
+            if section.groups.isEmpty || (section.groups.count == 1 && section.groups[0].tasks.isEmpty && isEmpty) {
                 HStack {
                     Spacer()
                     Text("Add protocols in My Protocols")
@@ -219,17 +230,34 @@ struct DailySectionView: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.horizontal, 16)
             } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
-                        DailyTaskRow(task: task)
-                        if index < tasks.count - 1 {
-                            Divider()
-                                .padding(.leading, 52)
+                ForEach(section.groups) { group in
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Stack header (hidden for single-stack with matching name)
+                        if !shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count) {
+                            HabitStackHeader(
+                                name: group.name,
+                                completedCount: group.completedCount,
+                                totalCount: group.tasks.count,
+                                showRing: true
+                            )
+                            .padding(.horizontal, 12)
+                        }
+
+                        if group.tasks.isEmpty {
+                            EmptyStackPlaceholder()
+                        } else {
+                            ForEach(Array(group.tasks.enumerated()), id: \.element.id) { index, task in
+                                DailyTaskRow(task: task)
+                                if index < group.tasks.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 52)
+                                }
+                            }
                         }
                     }
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16)
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 16)
             }
         }
     }
