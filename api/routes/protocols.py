@@ -151,10 +151,30 @@ def update_group(group_id: str):
 
 @protocols_bp.route("/groups/<group_id>", methods=["DELETE"])
 def delete_group(group_id: str):
+    """Delete a group (habit stack), reassigning its protocols to the first remaining group."""
     group = db.get_or_404(ProtocolGroup, group_id)
+
+    # Verify ownership
+    if not group.section or group.section.user_id != g.user_id:
+        return jsonify({"error": "Not found"}), 404
+
+    section = group.section
+    remaining = [gr for gr in section.groups if gr.id != group.id]
+
+    if not remaining:
+        return jsonify({"error": "Cannot delete the last stack in a section"}), 400
+
+    # Reassign protocols to the first remaining group (by position)
+    target = sorted(remaining, key=lambda gr: gr.position)[0]
+    max_pos = max((p.position for p in target.protocols), default=-1)
+    for i, proto in enumerate(sorted(group.protocols, key=lambda p: p.position)):
+        proto.group = target
+        proto.position = max_pos + 1 + i
+
+    db.session.flush()
     db.session.delete(group)
     _commit_and_refresh()
-    return jsonify({"deleted": True})
+    return "", 204
 
 
 @protocols_bp.route("/groups/reorder", methods=["PUT"])
@@ -168,6 +188,34 @@ def reorder_groups():
                 group.section_id = item["section_id"]
     _commit_and_refresh()
     return jsonify({"reordered": True})
+
+
+@protocols_bp.route("/reorder", methods=["PATCH"])
+def batch_reorder():
+    """Batch update positions for sections, groups, and/or protocols in one call."""
+    data = request.get_json()
+
+    for item in data.get("sections", []):
+        section = db.session.get(ProtocolSection, item["id"])
+        if section and section.user_id == g.user_id:
+            section.position = item["position"]
+
+    for item in data.get("groups", []):
+        group = db.session.get(ProtocolGroup, item["id"])
+        if group and group.section and group.section.user_id == g.user_id:
+            group.position = item["position"]
+            if "section_id" in item:
+                group.section_id = item["section_id"]
+
+    for item in data.get("protocols", []):
+        proto = db.session.get(Protocol, item["id"])
+        if proto and proto.group and proto.group.section and proto.group.section.user_id == g.user_id:
+            proto.position = item["position"]
+            if "group_id" in item:
+                proto.group_id = item["group_id"]
+
+    _commit_and_refresh()
+    return "", 204
 
 
 # ── Protocols CRUD ───────────────────────────────────────────────────
