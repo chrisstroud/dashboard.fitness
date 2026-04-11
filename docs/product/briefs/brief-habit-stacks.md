@@ -1,7 +1,7 @@
 # Product Brief: Habit Stacks — Atomic Habits-Driven Protocol Hierarchy
 
 **Date:** 2026-04-11
-**Status:** Draft
+**Status:** Approved
 **Builds on:** [Protocols v2 Brief](brief-protocols-v2.md)
 
 ---
