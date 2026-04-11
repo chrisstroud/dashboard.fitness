@@ -51,12 +51,20 @@ def list_sections():
 @protocols_bp.route("/sections", methods=["POST"])
 def create_section():
     data = request.get_json()
+    # Idempotent: if client provides an id and it already exists, return it
+    client_id = data.get("id")
+    if client_id:
+        existing = db.session.get(ProtocolSection, client_id)
+        if existing:
+            return jsonify({"id": existing.id, "name": existing.name}), 200
     count = ProtocolSection.query.filter_by(user_id=g.user_id).count()
     section = ProtocolSection(
         user_id=g.user_id,
         name=data["name"],
         position=data.get("position", count),
     )
+    if client_id:
+        section.id = client_id
     db.session.add(section)
     _commit_and_refresh()
     return jsonify({"id": section.id, "name": section.name}), 201
@@ -99,11 +107,19 @@ def reorder_sections():
 def create_group(section_id: str):
     db.get_or_404(ProtocolSection, section_id)
     data = request.get_json()
+    # Idempotent: if client provides an id and it already exists, return it
+    client_id = data.get("id")
+    if client_id:
+        existing = db.session.get(ProtocolGroup, client_id)
+        if existing:
+            return jsonify({"id": existing.id, "name": existing.name}), 200
     group = ProtocolGroup(
         section_id=section_id,
         name=data["name"],
         position=data.get("position", 0),
     )
+    if client_id:
+        group.id = client_id
     db.session.add(group)
 
     for i, proto_data in enumerate(data.get("protocols", [])):

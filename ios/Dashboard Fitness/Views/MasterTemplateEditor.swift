@@ -3,133 +3,91 @@ import SwiftData
 
 struct MasterTemplateEditor: View {
     @Query(sort: \ProtocolSection.position) private var sections: [ProtocolSection]
-    @Query private var allDocuments: [UserDocument]
     @Environment(\.modelContext) private var modelContext
-    @State private var showingNewSection = false
+    @State private var showingAddProtocol = false
+    @State private var showingAddSection = false
     @State private var newSectionName = ""
     @State private var renamingSection: ProtocolSection?
+    @State private var hasSeeded = false
 
-    // For now, treat all documents as "orphans" until protocol-document sync is implemented
-    private var orphanDocs: [UserDocument] {
-        allDocuments
+    /// All protocols flattened from all groups in a section, sorted by position.
+    private func protocols(in section: ProtocolSection) -> [UserProtocol] {
+        section.groups.flatMap(\.protocols).sorted { $0.position < $1.position }
     }
 
     var body: some View {
         List {
-            if sections.isEmpty {
+            if sections.isEmpty && hasSeeded {
                 ContentUnavailableView(
                     "No Protocols",
                     systemImage: "list.bullet.rectangle",
-                    description: Text("Tap + to create your first section")
+                    description: Text("Tap + to add your first protocol")
                 )
             }
 
             ForEach(sections) { section in
                 Section {
-                    ForEach(section.sortedGroups) { group in
+                    let protos = protocols(in: section)
+
+                    if protos.isEmpty {
+                        Text("No protocols yet — tap + to add one")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                            .listRowBackground(Color.clear)
+                    }
+
+                    ForEach(protos) { proto in
                         NavigationLink {
-                            GroupEditor(group: group)
+                            ProtocolDetailView(
+                                protocolId: proto.id.uuidString,
+                                label: proto.label,
+                                subtitle: proto.subtitle,
+                                documentId: proto.documentId
+                            )
                         } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "folder.fill")
-                                    .foregroundStyle(.blue)
-                                    .font(.body)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(group.name)
-                                        .font(.body.weight(.medium))
-                                    Text("\(group.protocols.count) protocol\(group.protocols.count == 1 ? "" : "s")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
+                            ProtocolRow(proto: proto)
                         }
                     }
-                    .onMove { from, to in moveGroups(in: section, from: from, to: to) }
-                    .onDelete { offsets in deleteGroups(in: section, at: offsets) }
-
-                    Button {
-                        addGroup(to: section)
-                    } label: {
-                        Label("Add Group", systemImage: "plus.circle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.blue)
+                    .onDelete { offsets in
+                        let items = protos
+                        for offset in offsets { modelContext.delete(items[offset]) }
                     }
                 } header: {
-                    HStack {
-                        Text(section.name)
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        Menu {
-                            Button { renameSection(section) } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-                            Button(role: .destructive) {
-                                modelContext.delete(section)
-                                LocalRefreshService.refreshToday(modelContext: modelContext)
-                            } label: {
-                                Label("Delete Section", systemImage: "trash")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .onMove { from, to in moveSections(from: from, to: to) }
-
-            // Notes section — orphan documents
-            Section("Notes") {
-                if orphanDocs.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Notes", systemImage: "doc.text")
-                    } description: {
-                        Text("Unattached documents will appear here")
-                    }
-                } else {
-                    ForEach(orphanDocs) { doc in
-                        NavigationLink {
-                            LinkedDocView(documentId: doc.id)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "doc.text.fill")
-                                    .foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(doc.title)
-                                        .font(.body)
-                                    if !doc.content.isEmpty {
-                                        Text(doc.content.prefix(60))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    sectionHeader(section)
                 }
             }
         }
         .navigationTitle("My Protocols")
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                EditButton()
-            }
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { newSectionName = ""; showingNewSection = true }) {
+                Menu {
+                    Button { showingAddProtocol = true } label: {
+                        Label("Add Protocol", systemImage: "plus.circle")
+                    }
+                    Button { newSectionName = ""; showingAddSection = true } label: {
+                        Label("Add Section", systemImage: "folder.badge.plus")
+                    }
+                } label: {
                     Image(systemName: "plus")
                 }
             }
         }
+        .onAppear { seedDefaultSectionsIfNeeded() }
         .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
-        .alert("New Section", isPresented: $showingNewSection) {
+        .sheet(isPresented: $showingAddProtocol) {
+            CreateProtocolSheet {
+                Task { await SyncService.shared.syncAll(modelContext: modelContext) }
+            }
+        }
+        .alert("New Section", isPresented: $showingAddSection) {
             TextField("Section name", text: $newSectionName)
             Button("Create") {
                 guard !newSectionName.isEmpty else { return }
                 let section = ProtocolSection(name: newSectionName, position: sections.count)
+                let group = ProtocolGroup(name: newSectionName, position: 0)
+                group.section = section
                 modelContext.insert(section)
+                modelContext.insert(group)
                 newSectionName = ""
             }
             Button("Cancel", role: .cancel) {}
@@ -149,27 +107,59 @@ struct MasterTemplateEditor: View {
         }
     }
 
-    private func moveSections(from: IndexSet, to: Int) {
-        var ordered = sections.sorted { $0.position < $1.position }
-        ordered.move(fromOffsets: from, toOffset: to)
-        for (i, s) in ordered.enumerated() { s.position = i }
+    // MARK: - Section Header
+
+    private func sectionHeader(_ section: ProtocolSection) -> some View {
+        HStack {
+            Text(section.name)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Menu {
+                Button {
+                    showingAddProtocol = true
+                } label: {
+                    Label("Add Protocol Here", systemImage: "plus.circle")
+                }
+                Button { renameSection(section) } label: {
+                    Label("Rename", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    modelContext.delete(section)
+                    LocalRefreshService.refreshToday(modelContext: modelContext)
+                } label: {
+                    Label("Delete Section", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
-    private func moveGroups(in section: ProtocolSection, from: IndexSet, to: Int) {
-        var ordered = section.sortedGroups
-        ordered.move(fromOffsets: from, toOffset: to)
-        for (i, g) in ordered.enumerated() { g.position = i }
-    }
+    // MARK: - Default Sections
 
-    private func deleteGroups(in section: ProtocolSection, at offsets: IndexSet) {
-        let sorted = section.sortedGroups
-        for offset in offsets { modelContext.delete(sorted[offset]) }
-    }
+    private func seedDefaultSectionsIfNeeded() {
+        guard !hasSeeded else { return }
+        hasSeeded = true
 
-    private func addGroup(to section: ProtocolSection) {
-        let group = ProtocolGroup(name: "New Group", position: section.groups.count)
-        group.section = section
-        modelContext.insert(group)
+        let defaults = [
+            ("Morning Routine", 0),
+            ("Evening Routine", 1),
+            ("Workouts", 2),
+        ]
+
+        let existingNames = Set(sections.map(\.name))
+
+        for (name, position) in defaults where !existingNames.contains(name) {
+            let section = ProtocolSection(name: name, position: position)
+            let group = ProtocolGroup(name: name, position: 0)
+            group.section = section
+            modelContext.insert(section)
+            modelContext.insert(group)
+        }
+
+        try? modelContext.save()
     }
 
     private func renameSection(_ section: ProtocolSection) {
@@ -178,105 +168,95 @@ struct MasterTemplateEditor: View {
     }
 }
 
-// MARK: - Group Editor
+// MARK: - Protocol Row
 
-struct GroupEditor: View {
-    @Bindable var group: ProtocolGroup
-    @Environment(\.modelContext) private var modelContext
-    @State private var showingCreateSheet = false
+private struct ProtocolRow: View {
+    let proto: UserProtocol
 
     var body: some View {
-        List {
-            Section("Group Settings") {
-                HStack {
-                    Image(systemName: "folder.fill")
-                        .foregroundStyle(.blue)
-                    TextField("Name", text: $group.name)
-                        .font(.body.weight(.medium))
-                }
-                if let section = group.section {
-                    LabeledContent("Section", value: section.name)
-                }
-            }
+        HStack(spacing: 12) {
+            Image(systemName: iconName)
+                .foregroundStyle(proto.type == "workout" ? .blue : .green)
+                .font(.body)
+                .frame(width: 28)
 
-            Section {
-                if group.protocols.isEmpty {
-                    Text("No protocols yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(proto.label)
+                        .font(.body)
 
-                ForEach(group.sortedProtocols) { proto in
-                    NavigationLink {
-                        ProtocolDetailView(
-                            protocolId: proto.id.uuidString,
-                            label: proto.label,
-                            subtitle: proto.subtitle,
-                            documentId: proto.documentId
-                        )
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(proto.label)
-                                    .font(.body)
-                                if proto.type == "workout" {
-                                    Text("Workout")
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(.blue)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .background(Color.blue.opacity(0.1), in: Capsule())
-                                }
-                            }
-                            if let subtitle = proto.subtitle {
-                                Text(subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if proto.documentId != nil {
-                                Label("Has reference doc", systemImage: "doc.text")
-                                    .font(.caption2)
-                                    .foregroundStyle(.blue)
-                            }
-                        }
+                    if proto.type == "workout" {
+                        Text(activityDisplayName)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.1), in: Capsule())
                     }
                 }
-                .onMove { from, to in
-                    var ordered = group.sortedProtocols
-                    ordered.move(fromOffsets: from, toOffset: to)
-                    for (i, p) in ordered.enumerated() { p.position = i }
+                if let subtitle = proto.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .onDelete { offsets in
-                    let sorted = group.sortedProtocols
-                    for offset in offsets { modelContext.delete(sorted[offset]) }
-                }
+            }
 
-                Button {
-                    showingCreateSheet = true
-                } label: {
-                    Label("Add Protocol", systemImage: "plus.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.blue)
-                }
-            } header: {
-                Text("Protocols (\(group.protocols.count))")
+            Spacer()
+
+            if let dur = proto.durationMinutes {
+                Text("\(dur)m")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
         }
-        .navigationTitle(group.name)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                EditButton()
-            }
+    }
+
+    private var iconName: String {
+        if proto.type == "workout" {
+            return activityIcon(proto.activityType)
         }
-        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreateProtocolSheet(groupId: group.id) {
-                // Refresh protocols from API after creation
-                Task {
-                    await SyncService.shared.syncAll(modelContext: modelContext)
-                }
-            }
+        return "checkmark.circle"
+    }
+
+    private var activityDisplayName: String {
+        guard let at = proto.activityType else { return "Workout" }
+        // Convert snake_case raw values to display names
+        return at.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func activityIcon(_ activityType: String?) -> String {
+        switch activityType {
+        case "traditional_strength_training": "figure.strengthtraining.traditional"
+        case "functional_strength_training": "figure.strengthtraining.functional"
+        case "core_training": "figure.core.training"
+        case "cross_training": "figure.cross.training"
+        case "running": "figure.run"
+        case "walking": "figure.walk"
+        case "hiking": "figure.hiking"
+        case "cycling": "figure.outdoor.cycle"
+        case "indoor_cycling": "figure.indoor.cycle"
+        case "swimming": "figure.pool.swim"
+        case "rowing": "figure.rower"
+        case "elliptical": "figure.elliptical"
+        case "stair_climbing": "figure.stair.stepper"
+        case "jump_rope": "figure.jumprope"
+        case "high_intensity_interval_training": "figure.highintensity.intervaltraining"
+        case "dance": "figure.dance"
+        case "barre": "figure.barre"
+        case "kickboxing": "figure.kickboxing"
+        case "yoga": "figure.yoga"
+        case "pilates": "figure.pilates"
+        case "flexibility": "figure.flexibility"
+        case "mind_and_body": "figure.mind.and.body"
+        case "cooldown": "figure.cooldown"
+        case "basketball": "figure.basketball"
+        case "soccer": "figure.soccer"
+        case "tennis": "figure.tennis"
+        case "golf": "figure.golf"
+        case "pickleball": "figure.pickleball"
+        case "martial_arts": "figure.martial.arts"
+        default: "figure.mixed.cardio"
         }
     }
 }
