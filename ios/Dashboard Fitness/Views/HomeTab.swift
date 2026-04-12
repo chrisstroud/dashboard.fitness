@@ -53,6 +53,8 @@ struct HomeTab: View {
 struct DailyInstanceView: View {
     let instance: DailyInstance
     @Query(sort: \ProtocolSection.position) private var masterSections: [ProtocolSection]
+    @State private var collapsedSections: Set<String> = []
+    @State private var collapsedGroups: Set<String> = []
 
     /// Merge master template sections with daily tasks so every section appears,
     /// even empty ones. Merges at the group (stack) level for full hierarchy.
@@ -105,7 +107,9 @@ struct DailyInstanceView: View {
             List {
                 ForEach(mergedSections) { section in
                     SwiftUI.Section {
-                        dailySectionContent(section)
+                        if !collapsedSections.contains(section.id) {
+                            dailySectionContent(section)
+                        }
                     } header: {
                         dailySectionHeader(section)
                     }
@@ -113,6 +117,7 @@ struct DailyInstanceView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
+        .onAppear { initializeCollapseState() }
     }
 
     // MARK: - Section Content
@@ -137,29 +142,46 @@ struct DailyInstanceView: View {
 
     @ViewBuilder
     private func dailyGroupContent(_ group: DailyGroup, section: DailySection) -> some View {
-        if !shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count) {
+        let showHeader = !shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count)
+        let isGroupCollapsed = showHeader && collapsedGroups.contains(group.id)
+
+        if showHeader {
             HabitStackHeader(
                 name: group.name,
                 completedCount: group.completedCount,
                 totalCount: group.tasks.count,
-                showRing: true
+                showRing: true,
+                isCollapsed: isGroupCollapsed,
+                onToggleCollapse: { toggleGroupCollapse(group) },
+                onMarkAllComplete: group.tasks.isEmpty ? nil : { markGroupComplete(group) }
             )
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 0, trailing: 20))
         }
 
-        if group.tasks.isEmpty {
-            EmptyStackPlaceholder()
-                .listRowSeparator(.hidden)
-        } else {
-            ForEach(group.tasks) { task in
-                DailyTaskRow(task: task)
+        if !isGroupCollapsed {
+            if group.tasks.isEmpty {
+                EmptyStackPlaceholder()
+                    .listRowSeparator(.hidden)
+            } else {
+                ForEach(group.tasks) { task in
+                    DailyTaskRow(task: task) {
+                        checkAutoCollapse(group: group, section: section)
+                    }
+                }
             }
         }
     }
 
     private func dailySectionHeader(_ section: DailySection) -> some View {
-        HStack(alignment: .center) {
+        let isCollapsed = collapsedSections.contains(section.id)
+        return HStack(alignment: .center) {
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                .animation(.easeInOut(duration: 0.2), value: isCollapsed)
+
             Text(section.name)
                 .font(.subheadline.weight(.semibold))
 
@@ -181,6 +203,87 @@ struct DailyInstanceView: View {
             }
 
             Spacer()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { toggleSectionCollapse(section) }
+    }
+
+    // MARK: - Collapse State Management
+
+    private func initializeCollapseState() {
+        for section in mergedSections {
+            if section.allCompleted {
+                collapsedSections.insert(section.id)
+            }
+            for group in section.groups where group.allCompleted && !group.tasks.isEmpty {
+                collapsedGroups.insert(group.id)
+            }
+        }
+    }
+
+    private func toggleSectionCollapse(_ section: DailySection) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            if collapsedSections.contains(section.id) {
+                collapsedSections.remove(section.id)
+            } else {
+                collapsedSections.insert(section.id)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func toggleGroupCollapse(_ group: DailyGroup) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            if collapsedGroups.contains(group.id) {
+                collapsedGroups.remove(group.id)
+            } else {
+                collapsedGroups.insert(group.id)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func markGroupComplete(_ group: DailyGroup) {
+        let allDone = group.allCompleted
+        withAnimation(.easeInOut(duration: 0.15)) {
+            for task in group.tasks {
+                if allDone {
+                    task.status = "pending"
+                    task.completedAt = nil
+                } else if task.status != "completed" {
+                    task.status = "completed"
+                    task.completedAt = Date()
+                }
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        for task in group.tasks {
+            SyncService.shared.syncTaskStatus(task)
+        }
+        // Auto-collapse after marking all complete
+        if !allDone {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    _ = collapsedGroups.insert(group.id)
+                }
+            }
+        }
+    }
+
+    private func checkAutoCollapse(group: DailyGroup, section: DailySection) {
+        if group.allCompleted {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    _ = collapsedGroups.insert(group.id)
+                }
+            }
+        }
+        if section.allCompleted {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    _ = collapsedSections.insert(section.id)
+                }
+            }
         }
     }
 }
@@ -253,6 +356,7 @@ struct DayHeader: View {
 
 struct DailyTaskRow: View {
     @Bindable var task: DailyTask
+    var onStatusChanged: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -262,7 +366,7 @@ struct DailyTaskRow: View {
                     .font(.system(size: 22))
                     .foregroundStyle(statusColor)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 28)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.borderless)
 
@@ -423,6 +527,7 @@ struct DailyTaskRow: View {
             }
         }
         SyncService.shared.syncTaskStatus(task)
+        onStatusChanged?()
     }
 }
 

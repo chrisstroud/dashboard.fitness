@@ -22,6 +22,10 @@ struct MasterTemplateEditor: View {
     @State private var addProtocolTargetSection: ProtocolSection?
     @State private var deleteSectionTarget: ProtocolSection?
 
+    // Collapse state
+    @State private var collapsedSections: Set<UUID> = []
+    @State private var collapsedGroups: Set<UUID> = []
+
     private func shouldCollapse(_ section: ProtocolSection, _ group: ProtocolGroup) -> Bool {
         shouldCollapseStack(sectionName: section.name, stackName: group.name, stackCount: section.groups.count)
     }
@@ -38,13 +42,15 @@ struct MasterTemplateEditor: View {
 
             ForEach(sections) { section in
                 Section {
-                    ForEach(section.sortedGroups) { group in
-                        groupContent(group: group, section: section)
+                    if !collapsedSections.contains(section.id) {
+                        ForEach(section.sortedGroups) { group in
+                            groupContent(group: group, section: section)
+                        }
+                        .onMove { indices, destination in
+                            moveStacks(indices, destination, in: section)
+                        }
+                        .deleteDisabled(true)
                     }
-                    .onMove { indices, destination in
-                        moveStacks(indices, destination, in: section)
-                    }
-                    .deleteDisabled(true)
                 } header: {
                     sectionHeader(section)
                 }
@@ -66,7 +72,6 @@ struct MasterTemplateEditor: View {
             }
         }
         .onAppear { seedDefaultSectionsIfNeeded() }
-        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
     }
 
     var body: some View {
@@ -153,25 +158,30 @@ struct MasterTemplateEditor: View {
 
     @ViewBuilder
     private func groupContent(group: ProtocolGroup, section: ProtocolSection) -> some View {
-        if !shouldCollapse(section, group) {
+        let showHeader = !shouldCollapse(section, group)
+        let isGroupCollapsed = showHeader && collapsedGroups.contains(group.id)
+
+        if showHeader {
             stackHeader(group: group, section: section)
         }
 
-        let protos = group.sortedProtocols
-        if protos.isEmpty {
-            EmptyStackPlaceholder()
-                .listRowSeparator(.hidden)
-        }
+        if !isGroupCollapsed {
+            let protos = group.sortedProtocols
+            if protos.isEmpty {
+                EmptyStackPlaceholder()
+                    .listRowSeparator(.hidden)
+            }
 
-        ForEach(protos) { proto in
-            protocolRow(proto: proto, group: group, section: section)
-        }
-        .onDelete { offsets in
-            let items = protos
-            for offset in offsets { modelContext.delete(items[offset]) }
-        }
-        .onMove { indices, destination in
-            moveProtocols(indices, destination, in: group)
+            ForEach(protos) { proto in
+                protocolRow(proto: proto, group: group, section: section)
+            }
+            .onDelete { offsets in
+                let items = protos
+                for offset in offsets { modelContext.delete(items[offset]) }
+            }
+            .onMove { indices, destination in
+                moveProtocols(indices, destination, in: group)
+            }
         }
     }
 
@@ -180,7 +190,9 @@ struct MasterTemplateEditor: View {
             name: group.name,
             completedCount: 0,
             totalCount: group.protocols.count,
-            showCompletion: false
+            showCompletion: false,
+            isCollapsed: collapsedGroups.contains(group.id),
+            onToggleCollapse: { toggleGroupCollapse(group) }
         )
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 0, trailing: 20))
@@ -235,9 +247,37 @@ struct MasterTemplateEditor: View {
     // MARK: - Section Header
 
     private func sectionHeader(_ section: ProtocolSection) -> some View {
-        HStack {
-            Text(section.name)
-                .font(.subheadline.weight(.semibold))
+        let isCollapsed = collapsedSections.contains(section.id)
+        let totalProtocols = section.groups.flatMap(\.protocols).count
+        return HStack {
+            Button {
+                toggleSectionCollapse(section)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                        .animation(.easeInOut(duration: 0.2), value: isCollapsed)
+
+                    Text(section.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    if totalProtocols == 0 {
+                        Text("No protocols")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Text("\(totalProtocols)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             Spacer()
             Menu {
                 Button {
@@ -324,15 +364,16 @@ struct MasterTemplateEditor: View {
         guard !hasSeeded else { return }
         hasSeeded = true
 
+        // Only seed if the user has no sections at all (first launch before sync)
+        guard sections.isEmpty else { return }
+
         let defaults = [
-            ("Morning Routine", 0),
-            ("Evening Routine", 1),
-            ("Workouts", 2),
+            ("Morning", 0),
+            ("Training", 1),
+            ("Evening", 2),
         ]
 
-        let existingNames = Set(sections.map(\.name))
-
-        for (name, position) in defaults where !existingNames.contains(name) {
+        for (name, position) in defaults {
             let section = ProtocolSection(name: name, position: position)
             let group = ProtocolGroup(name: name, position: 0)
             group.section = section
@@ -346,6 +387,30 @@ struct MasterTemplateEditor: View {
     private func renameSection(_ section: ProtocolSection) {
         newSectionName = section.name
         renamingSection = section
+    }
+
+    // MARK: - Collapse
+
+    private func toggleSectionCollapse(_ section: ProtocolSection) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            if collapsedSections.contains(section.id) {
+                collapsedSections.remove(section.id)
+            } else {
+                _ = collapsedSections.insert(section.id)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func toggleGroupCollapse(_ group: ProtocolGroup) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            if collapsedGroups.contains(group.id) {
+                collapsedGroups.remove(group.id)
+            } else {
+                _ = collapsedGroups.insert(group.id)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: - Reorder Handlers
@@ -607,7 +672,6 @@ struct ProtocolEditor: View {
         .navigationTitle("Edit Protocol")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { selectedDocId = proto.documentId }
-        .onDisappear { LocalRefreshService.refreshToday(modelContext: modelContext) }
     }
 }
 

@@ -10,55 +10,107 @@ struct HabitStackHeader: View {
     let totalCount: Int
     var showCompletion: Bool = true
     var showRing: Bool = false
+    var isCollapsed: Bool = false
+    var onToggleCollapse: (() -> Void)? = nil
+    var onMarkAllComplete: (() -> Void)? = nil
 
     private var allCompleted: Bool { totalCount > 0 && completedCount == totalCount }
 
     var body: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 4) {
+            collapseArea
+            Spacer()
+            if showRing && totalCount > 0 {
+                markCompleteRing
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Collapse Area
+
+    @ViewBuilder
+    private var collapseArea: some View {
+        let label = HStack(spacing: 4) {
+            if onToggleCollapse != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .animation(.easeInOut(duration: 0.2), value: isCollapsed)
+            }
+
             Text(name.uppercased())
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
                 .tracking(0.6)
 
-            if showCompletion {
-                if totalCount == 0 {
-                    // empty — no badge
-                } else if allCompleted {
+            completionBadge
+        }
+
+        if let action = onToggleCollapse {
+            Button(action: action) {
+                label.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            label
+        }
+    }
+
+    // MARK: - Completion Badge
+
+    @ViewBuilder
+    private var completionBadge: some View {
+        if showCompletion {
+            if totalCount == 0 {
+                EmptyView()
+            } else if allCompleted {
+                HStack(spacing: 2) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption2)
                         .foregroundStyle(.green)
                     Text("All done")
                         .font(.caption2)
                         .foregroundStyle(.green)
-                } else {
-                    Text("\(completedCount)/\(totalCount)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
                 }
-            } else if totalCount > 0 {
-                Text("\(totalCount)")
+            } else {
+                Text("\(completedCount)/\(totalCount)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
-
-            Spacer()
-
-            if showRing && totalCount > 0 {
-                ZStack {
-                    Circle()
-                        .stroke(Color(.systemGray5), lineWidth: 2)
-                    Circle()
-                        .trim(from: 0, to: Double(completedCount) / Double(max(totalCount, 1)))
-                        .stroke(.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.3), value: completedCount)
-                }
-                .frame(width: 20, height: 20)
-            }
+        } else if totalCount > 0 {
+            Text("\(totalCount)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 8)
-        .padding(.bottom, 2)
+    }
+
+    // MARK: - Mark Complete Ring
+
+    @ViewBuilder
+    private var markCompleteRing: some View {
+        let ring = ZStack {
+            Circle()
+                .stroke(Color(.systemGray5), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: Double(completedCount) / Double(max(totalCount, 1)))
+                .stroke(.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.3), value: completedCount)
+        }
+        .frame(width: 20, height: 20)
+
+        if let action = onMarkAllComplete {
+            Button(action: action) {
+                ring.frame(width: 32, height: 32)
+            }
+            .buttonStyle(.borderless)
+        } else {
+            ring
+        }
     }
 }
 

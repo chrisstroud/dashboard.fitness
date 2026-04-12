@@ -20,6 +20,11 @@ enum LocalRefreshService {
         // Get all master protocols
         let sections = (try? modelContext.fetch(FetchDescriptor<ProtocolSection>(sortBy: [SortDescriptor(\.position)]))) ?? []
 
+        // Safety: if no master protocols are loaded yet (sync incomplete or failed),
+        // skip refresh entirely to avoid mass-deleting daily tasks.
+        let totalProtocols = sections.flatMap(\.groups).flatMap(\.protocols).count
+        guard totalProtocols > 0 else { return }
+
         // Build lookup of existing daily tasks by source protocol ID
         var tasksBySource: [String: DailyTask] = [:]
         for task in instance.tasks {

@@ -166,6 +166,19 @@ Each commit must be independently valid. Small changes (single layer, <10 files)
 - Markdown only (`.md`) -- never `.docx`, `.doc`, or other formats
 - Screenshots go in `_screenshots/` (gitignored), never project root
 
+### Design Parity: Today Page ↔ My Protocols
+The **Today** page and **My Protocols** page must always look and behave identically in structure:
+- Both use SwiftUI `List` with `Section` containers (white card styling)
+- Both use `HabitStackHeader` for stack headers with the same parameters
+- Both support collapsible sections (chevron + tap) and collapsible stacks
+- Section headers share the same font/layout: chevron → name → status → spacer
+- Any structural/UX change to one page **must** be mirrored to the other
+
+Key differences (by design):
+- Today shows completion counts (`3/5`) and rings; My Protocols shows protocol counts
+- Today has "mark all complete" ring button; My Protocols has context menus for CRUD
+- Today auto-collapses completed sections/stacks; My Protocols does not
+
 ---
 
 ## Subagent Model Routing
