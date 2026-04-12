@@ -1,0 +1,144 @@
+name: Build & Deploy to TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+  workflow_dispatch:
+    inputs:
+      build_number_override:
+        description: 'Override build number (leave empty for auto-increment)'
+        required: false
+        type: string
+
+env:
+  SCHEME: "Dashboard Fitness"
+  PROJECT: "ios/Dashboard Fitness.xcodeproj"
+  BUNDLE_ID: "com.chrisstroud.Dashboard-Fitness"
+
+jobs:
+  build-and-deploy:
+    name: Build & Upload to TestFlight
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          # Use the latest available Xcode on the runner
+          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "No Xcode found"
+            exit 1
+          fi
+          echo "Using Xcode at: $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+
+      - name: Install Apple certificate and provisioning profile
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          echo -n "$CERTIFICATE_P12" | base64 --decode -o "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # Install provisioning profile
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          echo -n "$PROVISIONING_PROFILE" | base64 --decode -o "$PROFILE_PATH"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< \
+            $(security cms -D -i "$PROFILE_PATH"))
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< \
+            $(security cms -D -i "$PROFILE_PATH"))
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+
+          # Export for later steps
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+
+      - name: Determine build number
+        run: |
+          if [ -n "${{ inputs.build_number_override }}" ]; then
+            BUILD_NUMBER="${{ inputs.build_number_override }}"
+          else
+            # Auto-increment: use the GitHub run number
+            BUILD_NUMBER=${{ github.run_number }}
+          fi
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "Build number: $BUILD_NUMBER"
+
+      - name: Build archive
+        run: |
+          # Update ExportOptions with actual provisioning profile name
+          sed -i '' "s/\$(PROVISIONING_PROFILE_NAME)/$PROFILE_NAME/" ios/ExportOptions.plist
+
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/DashboardFitness.xcarchive \
+            -destination "generic/platform=iOS" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            -allowProvisioningUpdates \
+            | xcpretty
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/DashboardFitness.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            | xcpretty
+
+      - name: Upload to TestFlight
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+        run: |
+          # Write the API key to disk
+          mkdir -p ~/private_keys
+          echo -n "$ASC_API_KEY" | base64 --decode -o ~/private_keys/AuthKey_${ASC_API_KEY_ID}.p8
+
+          xcrun altool --upload-app \
+            --type ios \
+            --file $RUNNER_TEMP/export/Dashboard\ Fitness.ipa \
+            --apiKey "$ASC_API_KEY_ID" \
+            --apiIssuer "$ASC_API_ISSUER_ID"
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi
+          rm -f ~/private_keys/AuthKey_*.p8 2>/dev/null || true
